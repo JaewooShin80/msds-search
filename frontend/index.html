@@ -33,8 +33,8 @@
                         <a href="/dashboard.html" class="btn btn-outline">
                             <i class="fas fa-chart-bar"></i> 대시보드
                         </a>
-                        <button class="btn btn-gdrive" id="gdriveImportBtn">
-                            <i class="fab fa-google-drive"></i> Drive 일괄 업로드
+                        <button class="btn btn-bulk" id="bulkUploadBtn">
+                            <i class="fas fa-file-upload"></i> 일괄 등록
                         </button>
                         <button class="btn btn-primary" id="uploadBtn">
                             <i class="fas fa-upload"></i> MSDS 등록
@@ -295,41 +295,53 @@
         </div>
     </div>
 
-    <!-- ========== Google Drive 일괄 업로드 모달 ========== -->
-    <div class="modal" id="gdriveModal">
+    <!-- ========== 일괄 등록 모달 ========== -->
+    <div class="modal" id="bulkModal">
         <div class="modal-overlay"></div>
         <div class="modal-content modal-content--narrow">
             <div class="modal-header">
-                <h2><i class="fab fa-google-drive"></i> Google Drive 일괄 업로드</h2>
-                <button class="modal-close" id="closeGdriveModal"><i class="fas fa-times"></i></button>
+                <h2><i class="fas fa-file-upload"></i> MSDS 일괄 등록</h2>
+                <button class="modal-close" id="closeBulkModal"><i class="fas fa-times"></i></button>
             </div>
             <div class="modal-body">
-                <div id="gdriveStep1">
-                    <p class="gdrive-desc">
-                        Google Drive 공유 폴더의 PDF 파일들을 GCS 저장소에 일괄 업로드합니다.<br>
-                        폴더 공유 설정이 <strong>"링크가 있는 모든 사용자"</strong>로 되어 있어야 합니다.
-                    </p>
-                    <div class="gdrive-folder-input-row">
-                        <i class="fab fa-google-drive gdrive-icon"></i>
-                        <input type="text" id="gdriveFolderUrlInput" class="gdrive-url-input"
-                            placeholder="Google Drive 폴더 공유 링크를 붙여넣으세요">
+                <!-- STEP 1: 파일 선택 -->
+                <div id="bulkStep1">
+                    <div class="upload-drop-zone" id="bulkDropZone">
+                        <i class="fas fa-copy fa-3x"></i>
+                        <p>여러 PDF 파일을 드래그하거나 클릭하여 선택하세요</p>
+                        <input type="file" id="bulkFileInput" accept=".pdf" multiple style="display:none">
+                        <button class="btn btn-primary" onclick="document.getElementById('bulkFileInput').click()">
+                            <i class="fas fa-folder-open"></i> 파일 선택 (다중)
+                        </button>
                     </div>
+                    <div id="bulkFileList" class="bulk-file-list" style="display:none;">
+                        <h4><i class="fas fa-list"></i> 선택된 파일 (<span id="bulkFileCount">0</span>개)</h4>
+                        <ul id="bulkFileNames"></ul>
+                    </div>
+                    <p class="bulk-info">
+                        <i class="fas fa-info-circle"></i>
+                        PDF 파일을 업로드하면 AI가 자동으로 분석하여 제품명, 카테고리, 위험등급 등을 분류합니다.
+                    </p>
                 </div>
-                <div id="gdriveStep2" style="display:none;">
+
+                <!-- STEP 2: 업로드 + 분석 중 -->
+                <div id="bulkStep2" style="display:none;">
                     <div class="analyzing-box">
                         <i class="fas fa-spinner fa-spin fa-2x"></i>
-                        <p id="gdriveProgressMsg">Google Drive에서 파일을 가져오는 중...</p>
+                        <p id="bulkProgressMsg">PDF 업로드 및 AI 분석 중...</p>
                     </div>
                 </div>
-                <div id="gdriveStep3" style="display:none;">
-                    <div class="gdrive-result" id="gdriveResult"></div>
+
+                <!-- STEP 3: 결과 -->
+                <div id="bulkStep3" style="display:none;">
+                    <div class="gdrive-result" id="bulkResult"></div>
                 </div>
             </div>
             <div class="modal-footer">
-                <button class="btn btn-primary" id="gdriveStartBtn">
-                    <i class="fas fa-cloud-upload-alt"></i> 업로드 시작
+                <button class="btn btn-primary" id="bulkStartBtn" disabled>
+                    <i class="fas fa-cloud-upload-alt"></i> 일괄 등록 시작
                 </button>
-                <button class="btn btn-secondary" id="closeGdriveModalBtn">
+                <button class="btn btn-secondary" id="closeBulkModalBtn">
                     <i class="fas fa-times"></i> 닫기
                 </button>
             </div>

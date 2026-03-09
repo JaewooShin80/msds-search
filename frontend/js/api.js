@@ -58,6 +58,15 @@ const api = {
     updateMSDS: (id, fd) => request(`${BASE}/msds/${id}`, { method: 'PUT', body: fd }),
     deleteMSDS: (id)     => request(`${BASE}/msds/${id}`, { method: 'DELETE' }),
 
+    // 로컬 다중 파일 일괄 업로드
+    bulkUpload(files) {
+        const fd = new FormData();
+        for (const file of files) {
+            fd.append('pdfs', file);
+        }
+        return request(`${BASE}/msds/bulk-upload`, { method: 'POST', body: fd });
+    },
+
     // Google Drive 폴더 → GCS 일괄 업로드
     importGDriveFolder(url) {
         const fd = new FormData();

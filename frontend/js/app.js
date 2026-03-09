@@ -12,6 +12,7 @@ const state = {
     currentView: 'grid',
     pendingPdfFile: null,    // 업로드 대기 중인 파일
     pendingGDriveUrl: null,  // Google Drive URL
+    pendingBulkFiles: [],    // 일괄 업로드 파일 목록
 };
 
 // ========== 초기화 ==========
@@ -184,14 +185,27 @@ function registerEventListeners() {
         if (e.key === 'Enter') { e.preventDefault(); handleGDriveSubmit(); }
     });
 
-    // Google Drive 폴더 일괄 업로드
-    document.getElementById('gdriveImportBtn').addEventListener('click', openGdriveModal);
-    document.getElementById('closeGdriveModal').addEventListener('click', closeGdriveModal);
-    document.getElementById('closeGdriveModalBtn').addEventListener('click', closeGdriveModal);
-    document.querySelector('#gdriveModal .modal-overlay').addEventListener('click', closeGdriveModal);
-    document.getElementById('gdriveStartBtn').addEventListener('click', startGdriveImport);
-    document.getElementById('gdriveFolderUrlInput').addEventListener('keydown', e => {
-        if (e.key === 'Enter') { e.preventDefault(); startGdriveImport(); }
+    // 일괄 등록 모달
+    document.getElementById('bulkUploadBtn').addEventListener('click', openBulkModal);
+    document.getElementById('closeBulkModal').addEventListener('click', closeBulkModal);
+    document.getElementById('closeBulkModalBtn').addEventListener('click', closeBulkModal);
+    document.querySelector('#bulkModal .modal-overlay').addEventListener('click', closeBulkModal);
+    document.getElementById('bulkStartBtn').addEventListener('click', startBulkUpload);
+
+    // 일괄 파일 선택
+    document.getElementById('bulkFileInput').addEventListener('change', handleBulkFilesSelected);
+
+    // 일괄 드래그 앤 드롭
+    const bdz = document.getElementById('bulkDropZone');
+    bdz.addEventListener('dragover', e => { e.preventDefault(); bdz.classList.add('dragover'); });
+    bdz.addEventListener('dragleave', () => bdz.classList.remove('dragover'));
+    bdz.addEventListener('drop', e => {
+        e.preventDefault();
+        bdz.classList.remove('dragover');
+        const files = [...e.dataTransfer.files].filter(f => f.type === 'application/pdf');
+        if (files.length === 0) { alert('PDF 파일만 업로드 가능합니다.'); return; }
+        state.pendingBulkFiles = files;
+        showBulkFileList(files);
     });
 }
 
@@ -514,41 +528,61 @@ function getPdfUrl(m) {
     return m.pdf_url || '#';
 }
 
-// ========== Google Drive 폴더 일괄 업로드 ==========
-function openGdriveModal() {
-    document.getElementById('gdriveStep1').style.display = 'block';
-    document.getElementById('gdriveStep2').style.display = 'none';
-    document.getElementById('gdriveStep3').style.display = 'none';
-    document.getElementById('gdriveFolderUrlInput').value = '';
-    document.getElementById('gdriveStartBtn').style.display = '';
-    document.getElementById('gdriveStartBtn').disabled = false;
-    document.getElementById('gdriveStartBtn').innerHTML = '<i class="fas fa-cloud-upload-alt"></i> 업로드 시작';
-    document.getElementById('gdriveModal').classList.add('active');
+// ========== 일괄 등록 ==========
+function openBulkModal() {
+    document.getElementById('bulkStep1').style.display = 'block';
+    document.getElementById('bulkStep2').style.display = 'none';
+    document.getElementById('bulkStep3').style.display = 'none';
+    document.getElementById('bulkFileInput').value = '';
+    document.getElementById('bulkFileList').style.display = 'none';
+    document.getElementById('bulkStartBtn').style.display = '';
+    document.getElementById('bulkStartBtn').disabled = true;
+    document.getElementById('bulkStartBtn').innerHTML = '<i class="fas fa-cloud-upload-alt"></i> 일괄 등록 시작';
+    state.pendingBulkFiles = [];
+    document.getElementById('bulkModal').classList.add('active');
     document.body.style.overflow = 'hidden';
 }
 
-function closeGdriveModal() {
-    document.getElementById('gdriveModal').classList.remove('active');
+function closeBulkModal() {
+    document.getElementById('bulkModal').classList.remove('active');
     document.body.style.overflow = '';
+    state.pendingBulkFiles = [];
 }
 
-async function startGdriveImport() {
-    const url = document.getElementById('gdriveFolderUrlInput').value.trim();
-    if (!url) { alert('Google Drive 폴더 URL을 입력하세요.'); return; }
-    if (!url.includes('drive.google.com')) { alert('유효한 Google Drive URL을 입력하세요.'); return; }
+function handleBulkFilesSelected(e) {
+    const files = [...e.target.files].filter(f => f.type === 'application/pdf');
+    if (files.length === 0) { alert('PDF 파일만 업로드 가능합니다.'); return; }
+    state.pendingBulkFiles = files;
+    showBulkFileList(files);
+}
 
-    const btn = document.getElementById('gdriveStartBtn');
+function showBulkFileList(files) {
+    document.getElementById('bulkFileCount').textContent = files.length;
+    const ul = document.getElementById('bulkFileNames');
+    ul.innerHTML = files.map(f =>
+        `<li><i class="fas fa-file-pdf" style="color:#dc2626;"></i> ${f.name} <span style="color:#94a3b8;">(${(f.size / 1024 / 1024).toFixed(1)}MB)</span></li>`
+    ).join('');
+    document.getElementById('bulkFileList').style.display = 'block';
+    document.getElementById('bulkStartBtn').disabled = false;
+}
+
+async function startBulkUpload() {
+    if (!state.pendingBulkFiles.length) { alert('파일을 선택하세요.'); return; }
+
+    const btn = document.getElementById('bulkStartBtn');
     btn.disabled = true;
     btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 업로드 중...';
 
-    document.getElementById('gdriveStep1').style.display = 'none';
-    document.getElementById('gdriveStep2').style.display = 'block';
+    document.getElementById('bulkStep1').style.display = 'none';
+    document.getElementById('bulkStep2').style.display = 'block';
+    document.getElementById('bulkProgressMsg').textContent =
+        `${state.pendingBulkFiles.length}개 PDF 업로드 및 AI 분석 중...`;
 
     try {
-        const result = await api.importGDriveFolder(url);
+        const result = await api.bulkUpload(state.pendingBulkFiles);
 
-        document.getElementById('gdriveStep2').style.display = 'none';
-        document.getElementById('gdriveStep3').style.display = 'block';
+        document.getElementById('bulkStep2').style.display = 'none';
+        document.getElementById('bulkStep3').style.display = 'block';
         btn.style.display = 'none';
 
         let html = `<div class="gdrive-result-summary">
@@ -571,7 +605,7 @@ async function startGdriveImport() {
             });
             html += '</ul>';
         }
-        if (result.errors.length) {
+        if (result.errors && result.errors.length) {
             html += '<h4 style="color:#dc2626;margin-top:1rem;">실패 목록:</h4><ul class="gdrive-file-list">';
             result.errors.forEach(f => {
                 html += `<li><i class="fas fa-exclamation-circle" style="color:#dc2626;"></i> ${f.filename}: ${f.error}</li>`;
@@ -579,7 +613,7 @@ async function startGdriveImport() {
             html += '</ul>';
         }
 
-        document.getElementById('gdriveResult').innerHTML = html;
+        document.getElementById('bulkResult').innerHTML = html;
 
         // MSDS 목록 새로고침
         if (result.uploaded.length) {
@@ -591,10 +625,10 @@ async function startGdriveImport() {
         }
 
     } catch (err) {
-        document.getElementById('gdriveStep2').style.display = 'none';
-        document.getElementById('gdriveStep1').style.display = 'block';
+        document.getElementById('bulkStep2').style.display = 'none';
+        document.getElementById('bulkStep1').style.display = 'block';
         btn.disabled = false;
-        btn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> 업로드 시작';
+        btn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> 일괄 등록 시작';
         alert(`업로드 실패: ${err.message}`);
     }
 }

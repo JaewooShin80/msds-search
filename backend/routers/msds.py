@@ -3,11 +3,13 @@ import os
 import re
 import uuid
 from pathlib import Path
+from datetime import date
 from typing import Optional
 from urllib.parse import quote
 
 import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
+from typing import List
 from fastapi.responses import FileResponse, StreamingResponse
 
 from db.database import get_connection
@@ -357,6 +359,86 @@ def delete(msds_id: int, conn=Depends(get_connection)):
     return {"message": "삭제되었습니다."}
 
 
+# ---------- 로컬 파일 다중 업로드 + AI 분석 + DB 등록 ----------
+
+@router.post("/bulk-upload")
+async def bulk_upload(
+    pdfs: List[UploadFile] = File(...),
+    conn=Depends(get_connection),
+):
+    """
+    여러 PDF 파일을 한번에 업로드하여:
+    1. GCS에 저장
+    2. AI로 자동 분석
+    3. DB에 MSDS 등록
+    """
+    uploaded = []
+    errors = []
+
+    for pdf in pdfs:
+        filename = pdf.filename or "unknown.pdf"
+        try:
+            if pdf.content_type and pdf.content_type != "application/pdf":
+                errors.append({"filename": filename, "error": "PDF 파일이 아닙니다."})
+                continue
+
+            pdf_bytes = await pdf.read()
+
+            # 1) GCS 업로드
+            gcs_path = gcs_upload_pdf(pdf_bytes, filename)
+
+            # 2) AI 분석
+            result = analyze(pdf_bytes)
+            fields = result.get("fields", {})
+            content_html = result.get("content_html", "")
+            ai_analyzed = 1 if result.get("mode") == "ai" else 0
+
+            # 3) DB 등록
+            kw = json.dumps(fields.get("keywords", []))
+            cur = conn.execute(
+                """
+                INSERT INTO msds
+                    (product_name, manufacturer, category, hazard_level,
+                     cas_number, revision_date, pdf_path, pdf_url,
+                     description, keywords, content_html, ai_analyzed)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    fields.get("product_name") or filename.replace(".pdf", ""),
+                    fields.get("manufacturer", "-"),
+                    fields.get("category", "기타"),
+                    fields.get("hazard_level", "경고"),
+                    fields.get("cas_number", "-"),
+                    fields.get("revision_date", str(date.today())),
+                    gcs_path,
+                    None,
+                    fields.get("description", ""),
+                    kw,
+                    content_html,
+                    ai_analyzed,
+                ),
+            )
+            conn.commit()
+
+            uploaded.append({
+                "id": cur.lastrowid,
+                "filename": filename,
+                "product_name": fields.get("product_name") or filename,
+                "category": fields.get("category", "기타"),
+                "mode": result.get("mode", "manual"),
+            })
+        except Exception as e:
+            errors.append({"filename": filename, "error": str(e)})
+
+    conn.close()
+
+    return {
+        "message": f"{len(uploaded)}개 MSDS 등록 완료",
+        "uploaded": uploaded,
+        "errors": errors,
+    }
+
+
 # ---------- Google Drive 폴더 → GCS 업로드 + AI 분석 + DB 등록 ----------
 
 @router.post("/import-gdrive-folder")
@@ -404,7 +486,7 @@ def import_gdrive_folder(
                     fields.get("category", "기타"),
                     fields.get("hazard_level", "경고"),
                     fields.get("cas_number", "-"),
-                    fields.get("revision_date", str(__import__("datetime").date.today())),
+                    fields.get("revision_date", str(date.today())),
                     gcs_path,
                     None,
                     fields.get("description", ""),

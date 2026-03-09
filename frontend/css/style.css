@@ -977,9 +977,9 @@ body {
     font-size: 0.8rem;
 }
 
-/* Google Drive 버튼 */
-.btn-gdrive {
-    background: #4285f4;
+/* 일괄 등록 버튼 */
+.btn-bulk {
+    background: #10b981;
     color: #fff;
     border: none;
     padding: 0.5rem 1rem;
@@ -991,7 +991,7 @@ body {
     gap: 0.4rem;
     transition: background 0.2s;
 }
-.btn-gdrive:hover { background: #3367d6; }
+.btn-bulk:hover { background: #059669; }
 
 /* Google Drive 폴더 모달 */
 .modal-content--narrow { max-width: 560px; }
@@ -1031,6 +1031,40 @@ body {
     display: flex;
     align-items: center;
     gap: 0.5rem;
+}
+
+.bulk-file-list {
+    margin-top: 1rem;
+    border: 1px solid #e2e8f0;
+    border-radius: 8px;
+    padding: 0.75rem 1rem;
+    max-height: 200px;
+    overflow-y: auto;
+}
+.bulk-file-list h4 {
+    margin: 0 0 0.5rem;
+    font-size: 0.9rem;
+    color: #1e3a8a;
+}
+.bulk-file-list ul {
+    list-style: none;
+    padding: 0;
+    margin: 0;
+}
+.bulk-file-list li {
+    padding: 0.3rem 0;
+    font-size: 0.85rem;
+    display: flex;
+    align-items: center;
+    gap: 0.4rem;
+    border-bottom: 1px solid #f1f5f9;
+}
+.bulk-file-list li:last-child { border-bottom: none; }
+
+.bulk-info {
+    margin-top: 0.75rem;
+    font-size: 0.85rem;
+    color: #64748b;
 }
 
 .upload-hint { margin-top: 0.75rem; font-size: 0.9rem; min-height: 1.5rem; }
