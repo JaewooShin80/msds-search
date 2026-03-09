@@ -357,13 +357,18 @@ def delete(msds_id: int, conn=Depends(get_connection)):
     return {"message": "삭제되었습니다."}
 
 
-# ---------- Google Drive 폴더 → GCS 일괄 업로드 ----------
+# ---------- Google Drive 폴더 → GCS 업로드 + AI 분석 + DB 등록 ----------
 
 @router.post("/import-gdrive-folder")
-def import_gdrive_folder(gdrive_folder_url: str = Form(...)):
+def import_gdrive_folder(
+    gdrive_folder_url: str = Form(...),
+    conn=Depends(get_connection),
+):
     """
-    Google Drive 공유 폴더의 PDF 파일들을 GCS에 일괄 업로드.
-    Cloud Run 서버에서 Google Drive → GCS 직접 전송.
+    Google Drive 공유 폴더의 PDF 파일들을:
+    1. GCS에 업로드
+    2. AI로 자동 분석 (제품명, 제조사, 카테고리 등)
+    3. DB에 MSDS로 등록
     """
     folder_id = extract_folder_id(gdrive_folder_url)
     if not folder_id:
@@ -374,13 +379,56 @@ def import_gdrive_folder(gdrive_folder_url: str = Form(...)):
 
     for filename, pdf_bytes in iter_folder_pdfs(folder_id):
         try:
+            # 1) GCS 업로드
             gcs_path = gcs_upload_pdf(pdf_bytes, filename)
-            uploaded.append({"filename": filename, "gcs_path": gcs_path})
+
+            # 2) AI 분석
+            result = analyze(pdf_bytes)
+            fields = result.get("fields", {})
+            content_html = result.get("content_html", "")
+            ai_analyzed = 1 if result.get("mode") == "ai" else 0
+
+            # 3) DB 등록
+            kw = json.dumps(fields.get("keywords", []))
+            cur = conn.execute(
+                """
+                INSERT INTO msds
+                    (product_name, manufacturer, category, hazard_level,
+                     cas_number, revision_date, pdf_path, pdf_url,
+                     description, keywords, content_html, ai_analyzed)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    fields.get("product_name") or filename.replace(".pdf", ""),
+                    fields.get("manufacturer", "-"),
+                    fields.get("category", "기타"),
+                    fields.get("hazard_level", "경고"),
+                    fields.get("cas_number", "-"),
+                    fields.get("revision_date", str(__import__("datetime").date.today())),
+                    gcs_path,
+                    None,
+                    fields.get("description", ""),
+                    kw,
+                    content_html,
+                    ai_analyzed,
+                ),
+            )
+            conn.commit()
+
+            uploaded.append({
+                "id": cur.lastrowid,
+                "filename": filename,
+                "product_name": fields.get("product_name") or filename,
+                "category": fields.get("category", "기타"),
+                "mode": result.get("mode", "manual"),
+            })
         except Exception as e:
             errors.append({"filename": filename, "error": str(e)})
 
+    conn.close()
+
     return {
-        "message": f"{len(uploaded)}개 파일 업로드 완료",
+        "message": f"{len(uploaded)}개 MSDS 등록 완료",
         "uploaded": uploaded,
         "errors": errors,
     }

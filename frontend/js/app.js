@@ -559,7 +559,15 @@ async function startGdriveImport() {
         if (result.uploaded.length) {
             html += '<ul class="gdrive-file-list">';
             result.uploaded.forEach(f => {
-                html += `<li><i class="fas fa-file-pdf" style="color:#dc2626;"></i> ${f.filename}</li>`;
+                const badge = f.mode === 'ai'
+                    ? '<span style="color:#10b981;font-size:0.8rem;"><i class="fas fa-robot"></i> AI</span>'
+                    : '<span style="color:#94a3b8;font-size:0.8rem;"><i class="fas fa-keyboard"></i> 수동</span>';
+                html += `<li>
+                    <i class="fas fa-file-pdf" style="color:#dc2626;"></i>
+                    <span style="flex:1;">${f.product_name || f.filename}</span>
+                    <span style="color:#64748b;font-size:0.8rem;">${f.category || ''}</span>
+                    ${badge}
+                </li>`;
             });
             html += '</ul>';
         }
@@ -572,6 +580,15 @@ async function startGdriveImport() {
         }
 
         document.getElementById('gdriveResult').innerHTML = html;
+
+        // MSDS 목록 새로고침
+        if (result.uploaded.length) {
+            const [stats, msdsData] = await Promise.all([api.getStats(), api.getMSDS()]);
+            state.allMSDS = msdsData;
+            state.filteredMSDS = msdsData;
+            document.getElementById('totalCount').textContent = stats.total;
+            applyFilters();
+        }
 
     } catch (err) {
         document.getElementById('gdriveStep2').style.display = 'none';
