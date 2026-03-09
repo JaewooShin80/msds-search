@@ -1,0 +1,38 @@
+steps:
+  # 1. Docker 이미지 빌드 (이름을 소문자로 고정하여 대문자 오류 방지)
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'build', 
+      '-t', 'asia-northeast3-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/mdsd-search/msds:$COMMIT_SHA', 
+      '.'
+    ]
+
+  # 2. 빌드된 이미지를 Artifact Registry에 업로드(Push)
+  - name: 'gcr.io/cloud-builders/docker'
+    args: [
+      'push', 
+      'asia-northeast3-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/mdsd-search/msds:$COMMIT_SHA'
+    ]
+
+  # 3. Cloud Run에 서비스 배포
+  - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
+    entrypoint: gcloud
+    args:
+      - 'run'
+      - 'deploy'
+      - 'msds-service'
+      - '--image'
+      - 'asia-northeast3-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/mdsd-search/msds:$COMMIT_SHA'
+      - '--region'
+      - 'asia-northeast3'
+      - '--platform'
+      - 'managed'
+      - '--allow-unauthenticated'
+      - '--set-env-vars'
+      - 'PYTHONUTF8=1,PYTHONIOENCODING=utf-8'
+
+images:
+  - 'asia-northeast3-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/mdsd-search/msds:$COMMIT_SHA'
+
+options:
+  logging: CLOUD_LOGGING_ONLY
