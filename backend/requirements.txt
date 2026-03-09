@@ -6,3 +6,5 @@ aiofiles==24.1.0
 pymupdf==1.26.1
 anthropic==0.50.0
 httpx==0.28.1
+google-cloud-storage==2.19.0
+google-api-python-client==2.166.0

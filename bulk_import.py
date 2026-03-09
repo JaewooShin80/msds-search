@@ -7,7 +7,6 @@ import os
 import sys
 import json
 import uuid
-import shutil
 import sqlite3
 import argparse
 from pathlib import Path
@@ -90,6 +89,7 @@ def main():
     load_dotenv(BACKEND / ".env")
 
     from services.analyzer import analyze, extract_text, text_to_html
+    from services.gcs import upload_pdf as gcs_upload_pdf
 
     conn = get_connection()
 
@@ -115,9 +115,8 @@ def main():
         try:
             pdf_bytes = pdf_path.read_bytes()
 
-            # PDF 복사
-            new_filename = f"{uuid.uuid4().hex}.pdf"
-            shutil.copy2(pdf_path, UPLOAD_DIR / new_filename)
+            # PDF를 GCS에 업로드
+            new_filename = gcs_upload_pdf(pdf_bytes, pdf_path.name)
 
             # 분석
             if use_ai:

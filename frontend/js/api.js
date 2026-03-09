@@ -40,6 +40,13 @@ const api = {
         return request(`${BASE}/msds/analyze`, { method: 'POST', body: fd });
     },
 
+    // Google Drive URL로 PDF 분석
+    analyzeGDrive(url) {
+        const fd = new FormData();
+        fd.append('gdrive_url', url);
+        return request(`${BASE}/msds/analyze-gdrive`, { method: 'POST', body: fd });
+    },
+
     // MSDS 등록 (FormData)
     createMSDS(formData) {
         return request(`${BASE}/msds`, { method: 'POST', body: formData });
@@ -50,4 +57,11 @@ const api = {
 
     updateMSDS: (id, fd) => request(`${BASE}/msds/${id}`, { method: 'PUT', body: fd }),
     deleteMSDS: (id)     => request(`${BASE}/msds/${id}`, { method: 'DELETE' }),
+
+    // Google Drive 폴더 → GCS 일괄 업로드
+    importGDriveFolder(url) {
+        const fd = new FormData();
+        fd.append('gdrive_folder_url', url);
+        return request(`${BASE}/msds/import-gdrive-folder`, { method: 'POST', body: fd });
+    },
 };

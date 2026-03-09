@@ -33,6 +33,9 @@
                         <a href="/dashboard.html" class="btn btn-outline">
                             <i class="fas fa-chart-bar"></i> 대시보드
                         </a>
+                        <button class="btn btn-gdrive" id="gdriveImportBtn">
+                            <i class="fab fa-google-drive"></i> Drive 일괄 업로드
+                        </button>
                         <button class="btn btn-primary" id="uploadBtn">
                             <i class="fas fa-upload"></i> MSDS 등록
                         </button>
@@ -179,6 +182,20 @@
                             <i class="fas fa-folder-open"></i> 파일 선택
                         </button>
                     </div>
+                    <div class="upload-divider">
+                        <span>또는</span>
+                    </div>
+                    <div class="gdrive-input-wrap">
+                        <div class="gdrive-input-row">
+                            <i class="fab fa-google-drive gdrive-icon"></i>
+                            <input type="text" id="gdriveUrlInput" class="gdrive-url-input"
+                                placeholder="Google Drive 공유 링크를 붙여넣으세요">
+                            <button class="btn btn-primary" id="gdriveSubmitBtn">
+                                <i class="fas fa-arrow-right"></i> 가져오기
+                            </button>
+                        </div>
+                        <small class="gdrive-hint">파일 공유 설정이 "링크가 있는 모든 사용자"로 되어 있어야 합니다.</small>
+                    </div>
                     <div class="upload-hint" id="uploadHint"></div>
                 </div>
 
@@ -273,6 +290,47 @@
                 </button>
                 <button class="btn btn-secondary" id="cancelUploadBtn">
                     <i class="fas fa-times"></i> 취소
+                </button>
+            </div>
+        </div>
+    </div>
+
+    <!-- ========== Google Drive 일괄 업로드 모달 ========== -->
+    <div class="modal" id="gdriveModal">
+        <div class="modal-overlay"></div>
+        <div class="modal-content modal-content--narrow">
+            <div class="modal-header">
+                <h2><i class="fab fa-google-drive"></i> Google Drive 일괄 업로드</h2>
+                <button class="modal-close" id="closeGdriveModal"><i class="fas fa-times"></i></button>
+            </div>
+            <div class="modal-body">
+                <div id="gdriveStep1">
+                    <p class="gdrive-desc">
+                        Google Drive 공유 폴더의 PDF 파일들을 GCS 저장소에 일괄 업로드합니다.<br>
+                        폴더 공유 설정이 <strong>"링크가 있는 모든 사용자"</strong>로 되어 있어야 합니다.
+                    </p>
+                    <div class="gdrive-folder-input-row">
+                        <i class="fab fa-google-drive gdrive-icon"></i>
+                        <input type="text" id="gdriveFolderUrlInput" class="gdrive-url-input"
+                            placeholder="Google Drive 폴더 공유 링크를 붙여넣으세요">
+                    </div>
+                </div>
+                <div id="gdriveStep2" style="display:none;">
+                    <div class="analyzing-box">
+                        <i class="fas fa-spinner fa-spin fa-2x"></i>
+                        <p id="gdriveProgressMsg">Google Drive에서 파일을 가져오는 중...</p>
+                    </div>
+                </div>
+                <div id="gdriveStep3" style="display:none;">
+                    <div class="gdrive-result" id="gdriveResult"></div>
+                </div>
+            </div>
+            <div class="modal-footer">
+                <button class="btn btn-primary" id="gdriveStartBtn">
+                    <i class="fas fa-cloud-upload-alt"></i> 업로드 시작
+                </button>
+                <button class="btn btn-secondary" id="closeGdriveModalBtn">
+                    <i class="fas fa-times"></i> 닫기
                 </button>
             </div>
         </div>

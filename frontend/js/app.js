@@ -11,6 +11,7 @@ const state = {
     searchQuery: '',
     currentView: 'grid',
     pendingPdfFile: null,    // 업로드 대기 중인 파일
+    pendingGDriveUrl: null,  // Google Drive URL
 };
 
 // ========== 초기화 ==========
@@ -176,6 +177,22 @@ function registerEventListeners() {
         if (file && file.type === 'application/pdf') handleFileSelected(file);
         else alert('PDF 파일만 업로드 가능합니다.');
     });
+
+    // Google Drive URL 가져오기 (개별 파일)
+    document.getElementById('gdriveSubmitBtn').addEventListener('click', handleGDriveSubmit);
+    document.getElementById('gdriveUrlInput').addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); handleGDriveSubmit(); }
+    });
+
+    // Google Drive 폴더 일괄 업로드
+    document.getElementById('gdriveImportBtn').addEventListener('click', openGdriveModal);
+    document.getElementById('closeGdriveModal').addEventListener('click', closeGdriveModal);
+    document.getElementById('closeGdriveModalBtn').addEventListener('click', closeGdriveModal);
+    document.querySelector('#gdriveModal .modal-overlay').addEventListener('click', closeGdriveModal);
+    document.getElementById('gdriveStartBtn').addEventListener('click', startGdriveImport);
+    document.getElementById('gdriveFolderUrlInput').addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); startGdriveImport(); }
+    });
 }
 
 // ========== 검색 / 필터 ==========
@@ -332,9 +349,11 @@ function resetUploadModal() {
     document.getElementById('uploadStep3').style.display = 'none';
     document.getElementById('uploadFooter').style.display = 'none';
     document.getElementById('pdfFileInput').value = '';
+    document.getElementById('gdriveUrlInput').value = '';
     document.getElementById('msdsForm').reset();
     document.getElementById('hiddenContentHtml').value = '';
     state.pendingPdfFile = null;
+    state.pendingGDriveUrl = null;
 }
 
 async function handleFileSelected(file) {
@@ -376,6 +395,49 @@ async function handleFileSelected(file) {
         document.getElementById('uploadStep1').style.display = 'block';
         document.getElementById('uploadHint').innerHTML =
             `<span style="color:#dc2626;"><i class="fas fa-exclamation-circle"></i> 분석 실패: ${err.message}</span>`;
+    }
+}
+
+async function handleGDriveSubmit() {
+    const url = document.getElementById('gdriveUrlInput').value.trim();
+    if (!url) { alert('Google Drive URL을 입력하세요.'); return; }
+    if (!url.includes('drive.google.com')) { alert('유효한 Google Drive URL을 입력하세요.'); return; }
+
+    state.pendingGDriveUrl = url;
+    state.pendingPdfFile = null;
+
+    // Step2: 분석 중
+    document.getElementById('uploadStep1').style.display = 'none';
+    document.getElementById('uploadStep2').style.display = 'block';
+    document.getElementById('analyzingMsg').textContent = 'Google Drive에서 PDF 다운로드 및 분석 중...';
+
+    try {
+        const result = await api.analyzeGDrive(url);
+
+        document.getElementById('uploadStep2').style.display = 'none';
+        document.getElementById('uploadStep3').style.display = 'block';
+        document.getElementById('uploadFooter').style.display = 'flex';
+
+        const preview = result.extracted_preview || '';
+        const previewEl = document.getElementById('extractedPreview');
+        if (preview) {
+            previewEl.style.display = 'block';
+            document.getElementById('extractedText').textContent = preview;
+        } else {
+            previewEl.style.display = 'none';
+        }
+
+        document.getElementById('aiBadge').style.display    = result.mode === 'ai'     ? 'block' : 'none';
+        document.getElementById('manualBadge').style.display = result.mode === 'manual' ? 'block' : 'none';
+
+        fillForm(result.fields, result.mode === 'ai');
+        document.getElementById('hiddenContentHtml').value = result.content_html || '';
+
+    } catch (err) {
+        document.getElementById('uploadStep2').style.display = 'none';
+        document.getElementById('uploadStep1').style.display = 'block';
+        document.getElementById('uploadHint').innerHTML =
+            `<span style="color:#dc2626;"><i class="fas fa-exclamation-circle"></i> Google Drive 가져오기 실패: ${err.message}</span>`;
     }
 }
 
@@ -425,6 +487,7 @@ async function submitMsds() {
         });
 
         if (state.pendingPdfFile) fd.append('pdf', state.pendingPdfFile);
+        else if (state.pendingGDriveUrl) fd.append('gdrive_url', state.pendingGDriveUrl);
 
         await api.createMSDS(fd);
 
@@ -449,6 +512,74 @@ async function submitMsds() {
 function getPdfUrl(m) {
     if (m.pdf_path) return `/uploads/pdfs/${m.pdf_path}`;
     return m.pdf_url || '#';
+}
+
+// ========== Google Drive 폴더 일괄 업로드 ==========
+function openGdriveModal() {
+    document.getElementById('gdriveStep1').style.display = 'block';
+    document.getElementById('gdriveStep2').style.display = 'none';
+    document.getElementById('gdriveStep3').style.display = 'none';
+    document.getElementById('gdriveFolderUrlInput').value = '';
+    document.getElementById('gdriveStartBtn').style.display = '';
+    document.getElementById('gdriveStartBtn').disabled = false;
+    document.getElementById('gdriveStartBtn').innerHTML = '<i class="fas fa-cloud-upload-alt"></i> 업로드 시작';
+    document.getElementById('gdriveModal').classList.add('active');
+    document.body.style.overflow = 'hidden';
+}
+
+function closeGdriveModal() {
+    document.getElementById('gdriveModal').classList.remove('active');
+    document.body.style.overflow = '';
+}
+
+async function startGdriveImport() {
+    const url = document.getElementById('gdriveFolderUrlInput').value.trim();
+    if (!url) { alert('Google Drive 폴더 URL을 입력하세요.'); return; }
+    if (!url.includes('drive.google.com')) { alert('유효한 Google Drive URL을 입력하세요.'); return; }
+
+    const btn = document.getElementById('gdriveStartBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 업로드 중...';
+
+    document.getElementById('gdriveStep1').style.display = 'none';
+    document.getElementById('gdriveStep2').style.display = 'block';
+
+    try {
+        const result = await api.importGDriveFolder(url);
+
+        document.getElementById('gdriveStep2').style.display = 'none';
+        document.getElementById('gdriveStep3').style.display = 'block';
+        btn.style.display = 'none';
+
+        let html = `<div class="gdrive-result-summary">
+            <i class="fas fa-check-circle" style="color:#10b981;font-size:2rem;"></i>
+            <h3>${result.message}</h3>
+        </div>`;
+
+        if (result.uploaded.length) {
+            html += '<ul class="gdrive-file-list">';
+            result.uploaded.forEach(f => {
+                html += `<li><i class="fas fa-file-pdf" style="color:#dc2626;"></i> ${f.filename}</li>`;
+            });
+            html += '</ul>';
+        }
+        if (result.errors.length) {
+            html += '<h4 style="color:#dc2626;margin-top:1rem;">실패 목록:</h4><ul class="gdrive-file-list">';
+            result.errors.forEach(f => {
+                html += `<li><i class="fas fa-exclamation-circle" style="color:#dc2626;"></i> ${f.filename}: ${f.error}</li>`;
+            });
+            html += '</ul>';
+        }
+
+        document.getElementById('gdriveResult').innerHTML = html;
+
+    } catch (err) {
+        document.getElementById('gdriveStep2').style.display = 'none';
+        document.getElementById('gdriveStep1').style.display = 'block';
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> 업로드 시작';
+        alert(`업로드 실패: ${err.message}`);
+    }
 }
 
 function debounce(fn, wait) {

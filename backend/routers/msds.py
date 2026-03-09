@@ -1,5 +1,6 @@
 import json
 import os
+import re
 import uuid
 from pathlib import Path
 from typing import Optional
@@ -11,6 +12,8 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 from db.database import get_connection
 from services.analyzer import analyze
+from services.gcs import upload_pdf as gcs_upload_pdf, download_bytes as gcs_download, exists as gcs_exists
+from services.gdrive import extract_folder_id, iter_folder_pdfs
 
 router = APIRouter()
 
@@ -26,14 +29,51 @@ def row_to_dict(row) -> dict:
     return d
 
 
-def _save_pdf(upload: UploadFile) -> str:
-    """업로드 파일을 저장하고 파일명 반환"""
-    if upload.content_type != "application/pdf":
-        raise HTTPException(status_code=400, detail="PDF 파일만 업로드 가능합니다.")
-    ext = Path(upload.filename).suffix or ".pdf"
-    filename = f"{uuid.uuid4().hex}{ext}"
-    (UPLOAD_DIR / filename).write_bytes(upload.file.read())
-    return filename
+def _save_pdf_to_gcs(pdf_bytes: bytes, original_filename: str) -> str:
+    """PDF를 GCS에 업로드하고 GCS 경로 반환"""
+    return gcs_upload_pdf(pdf_bytes, original_filename)
+
+
+def _extract_gdrive_file_id(url: str) -> str | None:
+    """Google Drive 공유 URL에서 파일 ID 추출"""
+    patterns = [
+        r'/file/d/([a-zA-Z0-9_-]+)',       # /file/d/{id}/view
+        r'[?&]id=([a-zA-Z0-9_-]+)',         # ?id={id}
+        r'/open\?id=([a-zA-Z0-9_-]+)',      # /open?id={id}
+    ]
+    for p in patterns:
+        m = re.search(p, url)
+        if m:
+            return m.group(1)
+    return None
+
+
+async def _download_from_gdrive(url: str) -> bytes:
+    """Google Drive URL에서 PDF 다운로드"""
+    file_id = _extract_gdrive_file_id(url)
+    if not file_id:
+        raise HTTPException(status_code=400, detail="유효한 Google Drive URL이 아닙니다.")
+
+    download_url = f"https://drive.google.com/uc?export=download&id={file_id}"
+
+    async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
+        r = await client.get(download_url)
+
+        # 대용량 파일: 확인 페이지 우회
+        if r.status_code == 200 and b"virus scan warning" in r.content.lower() or b"confirm=" in r.content:
+            confirm_match = re.search(r'confirm=([0-9A-Za-z_-]+)', r.text)
+            if confirm_match:
+                confirmed_url = f"{download_url}&confirm={confirm_match.group(1)}"
+                r = await client.get(confirmed_url)
+
+        if r.status_code != 200:
+            raise HTTPException(status_code=502, detail="Google Drive에서 파일을 다운로드할 수 없습니다.")
+
+        content_type = r.headers.get("content-type", "")
+        if "application/pdf" not in content_type and len(r.content) < 1000:
+            raise HTTPException(status_code=400, detail="PDF 파일이 아니거나 접근 권한이 없습니다. 공유 설정을 확인하세요.")
+
+    return r.content
 
 
 # ---------- PDF 분석 (등록 전 미리보기) ----------
@@ -54,6 +94,15 @@ async def analyze_pdf(pdf: UploadFile = File(...)):
     pdf_bytes = await pdf.read()
     result = analyze(pdf_bytes)
     # extracted는 용량이 크므로 앞 3000자만 반환 (참조용)
+    result["extracted_preview"] = result.pop("extracted", "")[:3000]
+    return result
+
+
+@router.post("/analyze-gdrive")
+async def analyze_gdrive(gdrive_url: str = Form(...)):
+    """Google Drive URL에서 PDF를 다운로드하여 분석"""
+    pdf_bytes = await _download_from_gdrive(gdrive_url)
+    result = analyze(pdf_bytes)
     result["extracted_preview"] = result.pop("extracted", "")[:3000]
     return result
 
@@ -116,7 +165,7 @@ def get_one(msds_id: int, conn=Depends(get_connection)):
 
 @router.get("/{msds_id}/download")
 async def download(msds_id: int, conn=Depends(get_connection)):
-    """로컬 파일이 있으면 직접 전송, 외부 URL만 있으면 서버에서 프록시 다운로드"""
+    """GCS 파일 우선, 로컬 파일 차선, 외부 URL 최후"""
     row = conn.execute("SELECT * FROM msds WHERE id = ?", (msds_id,)).fetchone()
     conn.close()
     if not row:
@@ -124,16 +173,29 @@ async def download(msds_id: int, conn=Depends(get_connection)):
 
     filename_header = f"attachment; filename*=UTF-8''{quote(row['product_name'])}.pdf"
 
+    # 1) GCS 경로 (pdfs/ 로 시작하는 경로)
+    if row["pdf_path"] and row["pdf_path"].startswith("pdfs/"):
+        try:
+            data = gcs_download(row["pdf_path"])
+            return StreamingResponse(
+                iter([data]),
+                media_type="application/pdf",
+                headers={"Content-Disposition": filename_header},
+            )
+        except Exception:
+            pass  # GCS 실패 시 다음 방법 시도
+
+    # 2) 로컬 파일 (기존 호환)
     if row["pdf_path"]:
         path = UPLOAD_DIR / row["pdf_path"]
-        if not path.exists():
-            raise HTTPException(status_code=404, detail="파일이 존재하지 않습니다.")
-        return FileResponse(
-            path=str(path),
-            media_type="application/pdf",
-            headers={"Content-Disposition": filename_header},
-        )
+        if path.exists():
+            return FileResponse(
+                path=str(path),
+                media_type="application/pdf",
+                headers={"Content-Disposition": filename_header},
+            )
 
+    # 3) 외부 URL
     if row["pdf_url"]:
         async with httpx.AsyncClient(timeout=30, verify=False) as client:
             r = await client.get(row["pdf_url"])
@@ -159,6 +221,7 @@ async def create(
     revision_date: str  = Form(...),
     cas_number:    str  = Form("-"),
     pdf_url:       Optional[str] = Form(None),
+    gdrive_url:    Optional[str] = Form(None),
     description:   Optional[str] = Form(None),
     keywords:      Optional[str] = Form("[]"),
     content_html:  Optional[str] = Form(None),
@@ -169,14 +232,16 @@ async def create(
     pdf_path = None
     if pdf and pdf.filename:
         pdf_bytes = await pdf.read()
-        # 분석 결과의 content_html이 없으면 여기서 추출
         if not content_html:
             result = analyze(pdf_bytes)
             content_html = result.get("content_html")
-        ext = Path(pdf.filename).suffix or ".pdf"
-        filename = f"{uuid.uuid4().hex}{ext}"
-        (UPLOAD_DIR / filename).write_bytes(pdf_bytes)
-        pdf_path = filename
+        pdf_path = _save_pdf_to_gcs(pdf_bytes, pdf.filename)
+    elif gdrive_url:
+        pdf_bytes = await _download_from_gdrive(gdrive_url)
+        if not content_html:
+            result = analyze(pdf_bytes)
+            content_html = result.get("content_html")
+        pdf_path = _save_pdf_to_gcs(pdf_bytes, "gdrive.pdf")
 
     kw = json.dumps(json.loads(keywords) if keywords else [])
 
@@ -210,6 +275,7 @@ async def update(
     revision_date: Optional[str] = Form(None),
     cas_number:    Optional[str] = Form(None),
     pdf_url:       Optional[str] = Form(None),
+    gdrive_url:    Optional[str] = Form(None),
     description:   Optional[str] = Form(None),
     keywords:      Optional[str] = Form(None),
     content_html:  Optional[str] = Form(None),
@@ -229,10 +295,13 @@ async def update(
         if not content_html:
             result = analyze(pdf_bytes)
             content_html = result.get("content_html")
-        ext = Path(pdf.filename).suffix or ".pdf"
-        filename = f"{uuid.uuid4().hex}{ext}"
-        (UPLOAD_DIR / filename).write_bytes(pdf_bytes)
-        pdf_path = filename
+        pdf_path = _save_pdf_to_gcs(pdf_bytes, pdf.filename)
+    elif gdrive_url:
+        pdf_bytes = await _download_from_gdrive(gdrive_url)
+        if not content_html:
+            result = analyze(pdf_bytes)
+            content_html = result.get("content_html")
+        pdf_path = _save_pdf_to_gcs(pdf_bytes, "gdrive.pdf")
 
     kw = json.dumps(json.loads(keywords)) if keywords else e["keywords"]
 
@@ -286,3 +355,32 @@ def delete(msds_id: int, conn=Depends(get_connection)):
     conn.commit()
     conn.close()
     return {"message": "삭제되었습니다."}
+
+
+# ---------- Google Drive 폴더 → GCS 일괄 업로드 ----------
+
+@router.post("/import-gdrive-folder")
+def import_gdrive_folder(gdrive_folder_url: str = Form(...)):
+    """
+    Google Drive 공유 폴더의 PDF 파일들을 GCS에 일괄 업로드.
+    Cloud Run 서버에서 Google Drive → GCS 직접 전송.
+    """
+    folder_id = extract_folder_id(gdrive_folder_url)
+    if not folder_id:
+        raise HTTPException(status_code=400, detail="유효한 Google Drive 폴더 URL이 아닙니다.")
+
+    uploaded = []
+    errors = []
+
+    for filename, pdf_bytes in iter_folder_pdfs(folder_id):
+        try:
+            gcs_path = gcs_upload_pdf(pdf_bytes, filename)
+            uploaded.append({"filename": filename, "gcs_path": gcs_path})
+        except Exception as e:
+            errors.append({"filename": filename, "error": str(e)})
+
+    return {
+        "message": f"{len(uploaded)}개 파일 업로드 완료",
+        "uploaded": uploaded,
+        "errors": errors,
+    }

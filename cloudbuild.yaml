@@ -30,7 +30,7 @@ steps:
       - 'managed'
       - '--allow-unauthenticated'
       - '--set-env-vars'
-      - 'PYTHONUTF8=1,PYTHONIOENCODING=utf-8'
+      - 'PYTHONUTF8=1,PYTHONIOENCODING=utf-8,GCS_BUCKET=msdsdata'
 
 images:
   - 'asia-northeast3-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/msds-search/msds:$COMMIT_SHA'
