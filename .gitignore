@@ -1,0 +1,30 @@
+# Python
+__pycache__/
+*.pyc
+*.pyo
+backend/venv/
+
+# Database
+*.db
+*.db-shm
+*.db-wal
+
+# Environment
+.env
+
+# Uploads (사용자 업로드 파일)
+backend/uploads/pdfs/*
+!backend/uploads/pdfs/.gitkeep
+
+# Node (레거시)
+node_modules/
+package-lock.json
+
+# 데이터 (PDF 원본 / 분석 결과 — 대용량)
+DATA/
+analysis_queue/
+analysis_results/
+
+# IDE
+.vscode/
+.idea/

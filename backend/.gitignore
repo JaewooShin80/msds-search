@@ -1,0 +1,10 @@
+venv/
+__pycache__/
+*.pyc
+*.pyo
+*.db
+*.db-shm
+*.db-wal
+.env
+uploads/pdfs/*
+!uploads/pdfs/.gitkeep

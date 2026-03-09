@@ -1,0 +1,115 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MSDS 대시보드</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.0/dist/chart.umd.min.js"></script>
+    <link rel="stylesheet" href="css/style.css">
+</head>
+<body>
+    <header class="header">
+        <div class="container">
+            <div class="header-content">
+                <div class="logo">
+                    <i class="fas fa-chart-bar"></i>
+                    <span>MSDS 대시보드</span>
+                </div>
+                <div class="header-btns">
+                    <a href="/" class="btn btn-outline">
+                        <i class="fas fa-list"></i> 목록으로
+                    </a>
+                </div>
+            </div>
+        </div>
+    </header>
+
+    <main class="dashboard-main">
+        <div class="container">
+
+            <!-- 요약 카드 -->
+            <div class="dash-summary">
+                <div class="dash-card dash-card--total">
+                    <div class="dash-card-icon"><i class="fas fa-file-alt"></i></div>
+                    <div class="dash-card-body">
+                        <div class="dash-card-num" id="dTotal">-</div>
+                        <div class="dash-card-label">전체 MSDS</div>
+                    </div>
+                </div>
+                <div class="dash-card dash-card--danger">
+                    <div class="dash-card-icon"><i class="fas fa-exclamation-circle"></i></div>
+                    <div class="dash-card-body">
+                        <div class="dash-card-num" id="dDanger">-</div>
+                        <div class="dash-card-label">위험</div>
+                    </div>
+                </div>
+                <div class="dash-card dash-card--warning">
+                    <div class="dash-card-icon"><i class="fas fa-exclamation-triangle"></i></div>
+                    <div class="dash-card-body">
+                        <div class="dash-card-num" id="dWarning">-</div>
+                        <div class="dash-card-label">경고</div>
+                    </div>
+                </div>
+                <div class="dash-card dash-card--caution">
+                    <div class="dash-card-icon"><i class="fas fa-info-circle"></i></div>
+                    <div class="dash-card-body">
+                        <div class="dash-card-num" id="dCaution">-</div>
+                        <div class="dash-card-label">주의</div>
+                    </div>
+                </div>
+            </div>
+
+            <!-- 차트 영역 -->
+            <div class="dash-charts">
+                <!-- 카테고리별 현황 (수평 막대) -->
+                <div class="dash-panel dash-panel--wide">
+                    <h3><i class="fas fa-layer-group"></i> 카테고리별 현황</h3>
+                    <canvas id="categoryChart"></canvas>
+                </div>
+
+                <!-- 위험등급 도넛 -->
+                <div class="dash-panel">
+                    <h3><i class="fas fa-exclamation-triangle"></i> 위험등급 분포</h3>
+                    <canvas id="hazardChart"></canvas>
+                </div>
+
+                <!-- 제조사별 현황 -->
+                <div class="dash-panel">
+                    <h3><i class="fas fa-industry"></i> 제조사별 현황 (상위 10)</h3>
+                    <canvas id="manufacturerChart"></canvas>
+                </div>
+            </div>
+
+            <!-- 최근 등록 -->
+            <div class="dash-panel">
+                <h3><i class="fas fa-clock"></i> 최근 등록 MSDS</h3>
+                <table class="dash-table">
+                    <thead>
+                        <tr>
+                            <th>제품명</th>
+                            <th>카테고리</th>
+                            <th>위험등급</th>
+                            <th>등록일시</th>
+                        </tr>
+                    </thead>
+                    <tbody id="recentTable"></tbody>
+                </table>
+            </div>
+
+        </div>
+    </main>
+
+    <footer class="footer">
+        <div class="container">
+            <div class="footer-content">
+                <p>&copy; 2026 MSDS 검색 시스템. All rights reserved.</p>
+            </div>
+        </div>
+    </footer>
+
+    <script src="js/api.js"></script>
+    <script src="js/dashboard.js"></script>
+</body>
+</html>
