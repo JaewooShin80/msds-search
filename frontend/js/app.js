@@ -28,13 +28,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function initializeApp() {
     showLoading(true);
 
-    const [stats, msdsData, categories, hazardLevels, manufacturers, aiStatus] = await Promise.all([
+    // 핵심 5개만 Promise.all — 하나라도 실패하면 로더 에러가 되므로 최소화
+    const [stats, msdsData, categories, hazardLevels, manufacturers] = await Promise.all([
         api.getStats(),
         api.getMSDS(),
         api.getCategories(),
         api.getHazardLevels(),
         api.getManufacturers(),
-        api.getAiStatus(),
     ]);
 
     state.allMSDS = msdsData;
@@ -43,19 +43,21 @@ async function initializeApp() {
     document.getElementById('totalCount').textContent = stats.total;
     document.getElementById('categoryCount').textContent = stats.categoryCount;
 
-    // AI 재분석 버튼: 미분석 항목이 있을 때만 표시
-    if (aiStatus.ai_available && aiStatus.pending_count > 0) {
-        const btn = document.getElementById('reanalyzeBtn');
-        btn.style.display = '';
-        document.getElementById('pendingBadge').textContent = aiStatus.pending_count;
-    }
-
     initializeFilters(categories, hazardLevels, manufacturers);
     renderCards();
     updateStats();
     registerEventListeners();
 
     showLoading(false);
+
+    // AI 재분석 버튼: 비필수 — 실패해도 앱 로딩에 영향 없음
+    api.getAiStatus().then(aiStatus => {
+        if (aiStatus.ai_available && aiStatus.pending_count > 0) {
+            const btn = document.getElementById('reanalyzeBtn');
+            btn.style.display = '';
+            document.getElementById('pendingBadge').textContent = aiStatus.pending_count;
+        }
+    }).catch(() => { /* AI 상태 조회 실패 시 조용히 무시 */ });
 
     // URL 파라미터로 id가 전달되면 해당 MSDS 모달 자동 오픈
     const urlParams = new URLSearchParams(window.location.search);
