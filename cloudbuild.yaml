@@ -29,6 +29,7 @@ steps:
       - '--platform'
       - 'managed'
       - '--allow-unauthenticated'
+      - '--timeout=3600'
       - '--set-env-vars'
       - 'PYTHONUTF8=1,PYTHONIOENCODING=utf-8,GCS_BUCKET=msdsdata'
       - '--set-secrets'

@@ -448,31 +448,58 @@ async def import_gcs_folder(
     """
     GCS 버킷 내 특정 폴더(prefix)의 PDF 파일들을:
     1. GCS 경로를 그대로 pdf_path로 사용 (재업로드 없음)
-    2. AI로 자동 분석 (제품명, 제조사, 카테고리 등)
+    2. AI로 자동 분석 (제품명, 제조사, 카테고리 등) — 동시 8개 병렬 처리
     3. DB에 MSDS로 등록 (중복 제외)
     """
+    import asyncio
+    CONCURRENCY = 8  # 동시 처리 수 (Claude API rate limit 고려)
+
     prefix = gcs_prefix.rstrip("/") + "/"
 
     existing_paths = set(
         r[0] for r in conn.execute("SELECT pdf_path FROM msds WHERE pdf_path IS NOT NULL").fetchall()
     )
 
+    # GCS에서 blob 목록 + 바이트 수집 (동기 I/O → thread로 실행)
+    blobs = await asyncio.to_thread(
+        lambda: list(gcs_iter_prefix_pdfs(prefix))
+    )
+
+    # 이미 등록된 항목 분리
+    pending = [(b, f, d) for b, f, d in blobs if b not in existing_paths]
+    skipped = [{"filename": f} for b, f, d in blobs if b in existing_paths]
+
     uploaded = []
-    skipped = []
     errors = []
+    sem = asyncio.Semaphore(CONCURRENCY)
 
-    for blob_name, filename, pdf_bytes in gcs_iter_prefix_pdfs(prefix):
-        if blob_name in existing_paths:
-            skipped.append({"filename": filename})
+    async def process_one(blob_name: str, filename: str, pdf_bytes: bytes):
+        async with sem:
+            try:
+                result = await asyncio.to_thread(analyze, pdf_bytes)
+                fields = result.get("fields", {})
+                return {
+                    "blob_name": blob_name,
+                    "filename": filename,
+                    "fields": fields,
+                    "content_html": result.get("content_html", ""),
+                    "ai_analyzed": 1 if result.get("mode") == "ai" else 0,
+                    "mode": result.get("mode", "manual"),
+                    "error": None,
+                }
+            except Exception as e:
+                return {"blob_name": blob_name, "filename": filename, "error": str(e)}
+
+    results = await asyncio.gather(*[process_one(b, f, d) for b, f, d in pending])
+
+    # DB 등록 (순차 — SQLite는 단일 쓰기)
+    for r in results:
+        if r.get("error"):
+            errors.append({"filename": r["filename"], "error": r["error"]})
             continue
-
+        fields = r["fields"]
+        kw = json.dumps(fields.get("keywords", []))
         try:
-            result = analyze(pdf_bytes)
-            fields = result.get("fields", {})
-            content_html = result.get("content_html", "")
-            ai_analyzed = 1 if result.get("mode") == "ai" else 0
-
-            kw = json.dumps(fields.get("keywords", []))
             cur = conn.execute(
                 """
                 INSERT INTO msds
@@ -482,31 +509,30 @@ async def import_gcs_folder(
                 VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
                 """,
                 (
-                    fields.get("product_name") or filename.replace(".pdf", ""),
+                    fields.get("product_name") or r["filename"].replace(".pdf", ""),
                     fields.get("manufacturer", "-"),
                     fields.get("category", "기타"),
                     fields.get("hazard_level", "경고"),
                     fields.get("cas_number", "-"),
                     fields.get("revision_date", str(date.today())),
-                    blob_name,
+                    r["blob_name"],
                     None,
                     fields.get("description", ""),
                     kw,
-                    content_html,
-                    ai_analyzed,
+                    r["content_html"],
+                    r["ai_analyzed"],
                 ),
             )
             conn.commit()
-
             uploaded.append({
                 "id": cur.lastrowid,
-                "filename": filename,
-                "product_name": fields.get("product_name") or filename,
+                "filename": r["filename"],
+                "product_name": fields.get("product_name") or r["filename"],
                 "category": fields.get("category", "기타"),
-                "mode": result.get("mode", "manual"),
+                "mode": r["mode"],
             })
         except Exception as e:
-            errors.append({"filename": filename, "error": str(e)})
+            errors.append({"filename": r["filename"], "error": str(e)})
 
     conn.close()
     return {
