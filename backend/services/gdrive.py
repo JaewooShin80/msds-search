@@ -7,16 +7,15 @@ import io
 import re
 from typing import Generator
 
-import google.auth
-from googleapiclient.discovery import build
-from googleapiclient.http import MediaIoBaseDownload
-
 _service = None
 
 
 def _get_service():
     global _service
     if _service is None:
+        import google.auth
+        from googleapiclient.discovery import build
+
         creds, _ = google.auth.default(
             scopes=["https://www.googleapis.com/auth/drive.readonly"]
         )
@@ -38,7 +37,7 @@ def extract_folder_id(url: str) -> str | None:
 
 
 def list_files(folder_id: str) -> list[dict]:
-    """폴더 내 파일 목록 조회 (PDF만 필터)"""
+    """폴더 내 파일 목록 조회"""
     service = _get_service()
     results = []
     page_token = None
@@ -68,6 +67,8 @@ def list_files(folder_id: str) -> list[dict]:
 
 def download_file(file_id: str) -> bytes:
     """Google Drive 파일을 바이트로 다운로드"""
+    from googleapiclient.http import MediaIoBaseDownload
+
     service = _get_service()
     request = service.files().get_media(fileId=file_id)
     buffer = io.BytesIO()

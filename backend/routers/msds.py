@@ -15,7 +15,6 @@ from fastapi.responses import FileResponse, StreamingResponse
 from db.database import get_connection
 from services.analyzer import analyze
 from services.gcs import upload_pdf as gcs_upload_pdf, download_bytes as gcs_download, exists as gcs_exists
-from services.gdrive import extract_folder_id, iter_folder_pdfs
 
 router = APIRouter()
 
@@ -452,6 +451,8 @@ def import_gdrive_folder(
     2. AI로 자동 분석 (제품명, 제조사, 카테고리 등)
     3. DB에 MSDS로 등록
     """
+    from services.gdrive import extract_folder_id, iter_folder_pdfs
+
     folder_id = extract_folder_id(gdrive_folder_url)
     if not folder_id:
         raise HTTPException(status_code=400, detail="유효한 Google Drive 폴더 URL이 아닙니다.")
