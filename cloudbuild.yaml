@@ -1,9 +1,9 @@
 steps:
-  # 1. Docker 이미지 빌드 (이름을 소문자로 고정하여 대문자 오류 방지)
+  # 1. Docker 이미지 빌드 (이름을 소문자 msds-search로 고정)
   - name: 'gcr.io/cloud-builders/docker'
     args: [
       'build', 
-      '-t', 'asia-northeast3-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/mdsd-search/msds:$COMMIT_SHA', 
+      '-t', 'asia-northeast3-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/msds-search/msds:$COMMIT_SHA', 
       '.'
     ]
 
@@ -11,10 +11,10 @@ steps:
   - name: 'gcr.io/cloud-builders/docker'
     args: [
       'push', 
-      'asia-northeast3-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/mdsd-search/msds:$COMMIT_SHA'
+      'asia-northeast3-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/msds-search/msds:$COMMIT_SHA'
     ]
 
-  # 3. Cloud Run에 서비스 배포
+  # 3. Cloud Run에 서비스 배포 (서비스명: msds-service)
   - name: 'gcr.io/google.com/cloudsdktool/cloud-sdk'
     entrypoint: gcloud
     args:
@@ -22,7 +22,7 @@ steps:
       - 'deploy'
       - 'msds-service'
       - '--image'
-      - 'asia-northeast3-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/mdsd-search/msds:$COMMIT_SHA'
+      - 'asia-northeast3-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/msds-search/msds:$COMMIT_SHA'
       - '--region'
       - 'asia-northeast3'
       - '--platform'
@@ -32,7 +32,7 @@ steps:
       - 'PYTHONUTF8=1,PYTHONIOENCODING=utf-8'
 
 images:
-  - 'asia-northeast3-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/mdsd-search/msds:$COMMIT_SHA'
+  - 'asia-northeast3-docker.pkg.dev/$PROJECT_ID/cloud-run-source-deploy/msds-search/msds:$COMMIT_SHA'
 
 options:
   logging: CLOUD_LOGGING_ONLY
