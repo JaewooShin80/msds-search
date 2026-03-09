@@ -28,12 +28,13 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function initializeApp() {
     showLoading(true);
 
-    const [stats, msdsData, categories, hazardLevels, manufacturers] = await Promise.all([
+    const [stats, msdsData, categories, hazardLevels, manufacturers, aiStatus] = await Promise.all([
         api.getStats(),
         api.getMSDS(),
         api.getCategories(),
         api.getHazardLevels(),
         api.getManufacturers(),
+        api.getAiStatus(),
     ]);
 
     state.allMSDS = msdsData;
@@ -41,6 +42,13 @@ async function initializeApp() {
 
     document.getElementById('totalCount').textContent = stats.total;
     document.getElementById('categoryCount').textContent = stats.categoryCount;
+
+    // AI 재분석 버튼: 미분석 항목이 있을 때만 표시
+    if (aiStatus.ai_available && aiStatus.pending_count > 0) {
+        const btn = document.getElementById('reanalyzeBtn');
+        btn.style.display = '';
+        document.getElementById('pendingBadge').textContent = aiStatus.pending_count;
+    }
 
     initializeFilters(categories, hazardLevels, manufacturers);
     renderCards();
@@ -200,6 +208,9 @@ function registerEventListeners() {
     document.getElementById('gcsFolderInput').addEventListener('keydown', e => {
         if (e.key === 'Enter') { e.preventDefault(); handleGCSImport(); }
     });
+
+    // AI 재분석
+    document.getElementById('reanalyzeBtn').addEventListener('click', handleReanalyze);
 
     // 일괄 드래그 앤 드롭
     const bdz = document.getElementById('bulkDropZone');
@@ -636,6 +647,39 @@ async function startBulkUpload() {
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> 일괄 등록 시작';
         alert(`업로드 실패: ${err.message}`);
+    }
+}
+
+async function handleReanalyze() {
+    const btn = document.getElementById('reanalyzeBtn');
+    const count = document.getElementById('pendingBadge').textContent;
+    if (!confirm(`미분석 항목 ${count}개를 AI로 재분석합니다.\n시간이 걸릴 수 있습니다. 계속하시겠습니까?`)) return;
+
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i> 재분석 중...';
+
+    try {
+        const result = await api.reanalyzePending();
+        alert(`${result.message}${result.errors.length ? `\n실패: ${result.errors.length}개` : ''}`);
+
+        // 목록 새로고침
+        const [stats, msdsData, aiStatus] = await Promise.all([api.getStats(), api.getMSDS(), api.getAiStatus()]);
+        state.allMSDS = msdsData;
+        state.filteredMSDS = msdsData;
+        document.getElementById('totalCount').textContent = stats.total;
+        applyFilters();
+
+        // 남은 미분석 없으면 버튼 숨김
+        if (!aiStatus.ai_available || aiStatus.pending_count === 0) {
+            btn.style.display = 'none';
+        } else {
+            btn.disabled = false;
+            btn.innerHTML = `<i class="fas fa-robot"></i> AI 재분석 <span class="pending-badge">${aiStatus.pending_count}</span>`;
+        }
+    } catch (err) {
+        alert(`재분석 실패: ${err.message}`);
+        btn.disabled = false;
+        btn.innerHTML = `<i class="fas fa-robot"></i> AI 재분석 <span class="pending-badge">${count}</span>`;
     }
 }
 

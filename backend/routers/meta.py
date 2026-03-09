@@ -104,8 +104,12 @@ def get_dashboard(conn=Depends(get_connection)):
 
 
 @router.get("/ai-status")
-def get_ai_status():
-    """프론트엔드가 AI 분석 가능 여부를 확인하는 엔드포인트"""
+def get_ai_status(conn=Depends(get_connection)):
+    """AI 분석 가능 여부 + 미분석 건수 반환"""
     import os
     has_key = bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
-    return {"ai_available": has_key}
+    pending = conn.execute(
+        "SELECT COUNT(*) FROM msds WHERE ai_analyzed = 0 AND (pdf_path IS NOT NULL OR pdf_url IS NOT NULL)"
+    ).fetchone()[0]
+    conn.close()
+    return {"ai_available": has_key, "pending_count": pending}

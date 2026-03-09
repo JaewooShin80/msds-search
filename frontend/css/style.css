@@ -1018,6 +1018,31 @@ body {
 }
 
 /* 일괄 등록 버튼 */
+.btn-reanalyze {
+    background: #7c3aed;
+    color: #fff;
+    border: none;
+    padding: 0.5rem 1rem;
+    border-radius: 8px;
+    cursor: pointer;
+    font-size: 0.9rem;
+    display: inline-flex;
+    align-items: center;
+    gap: 0.4rem;
+    transition: background 0.2s;
+}
+.btn-reanalyze:hover { background: #6d28d9; }
+.btn-reanalyze:disabled { background: #a78bfa; cursor: not-allowed; }
+
+.pending-badge {
+    background: #fbbf24;
+    color: #1e1b4b;
+    border-radius: 12px;
+    padding: 1px 7px;
+    font-size: 0.75rem;
+    font-weight: 700;
+}
+
 .btn-bulk {
     background: #10b981;
     color: #fff;

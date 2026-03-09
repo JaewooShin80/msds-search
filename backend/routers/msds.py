@@ -620,3 +620,122 @@ def import_gdrive_folder(
         "uploaded": uploaded,
         "errors": errors,
     }
+
+
+# ---------- 미분석 레코드 AI 재분석 ----------
+
+@router.post("/reanalyze-pending")
+async def reanalyze_pending(conn=Depends(get_connection)):
+    """
+    DB에 등록된 레코드 중 ai_analyzed=0 인 항목을:
+    1. GCS 또는 외부 URL에서 PDF 다운로드
+    2. AI로 전체 필드 재분석 (병렬 처리 CONCURRENCY=8)
+    3. product_name, manufacturer, category, hazard_level,
+       cas_number, revision_date, description, keywords,
+       content_html, ai_analyzed 전부 업데이트
+    """
+    import asyncio
+    CONCURRENCY = 8
+
+    rows = conn.execute(
+        """SELECT id, product_name, pdf_path, pdf_url
+           FROM msds
+           WHERE ai_analyzed = 0
+             AND (pdf_path IS NOT NULL OR pdf_url IS NOT NULL)"""
+    ).fetchall()
+
+    if not rows:
+        conn.close()
+        return {"message": "재분석할 항목이 없습니다.", "updated": [], "errors": []}
+
+    sem = asyncio.Semaphore(CONCURRENCY)
+
+    async def fetch_and_analyze(row):
+        async with sem:
+            msds_id  = row["id"]
+            pdf_path = row["pdf_path"]
+            pdf_url  = row["pdf_url"]
+            name     = row["product_name"]
+            try:
+                if pdf_path:
+                    pdf_bytes = await asyncio.to_thread(gcs_download, pdf_path)
+                else:
+                    async with httpx.AsyncClient(timeout=60, verify=False) as client:
+                        r = await client.get(pdf_url)
+                    if r.status_code != 200:
+                        return {"id": msds_id, "name": name, "error": f"HTTP {r.status_code}"}
+                    pdf_bytes = r.content
+
+                result = await asyncio.to_thread(analyze, pdf_bytes)
+                return {
+                    "id": msds_id,
+                    "name": name,
+                    "fields": result.get("fields", {}),
+                    "content_html": result.get("content_html", ""),
+                    "ai_analyzed": 1 if result.get("mode") == "ai" else 0,
+                    "mode": result.get("mode", "manual"),
+                    "error": None,
+                }
+            except Exception as e:
+                return {"id": msds_id, "name": name, "error": str(e)}
+
+    results = await asyncio.gather(*[fetch_and_analyze(row) for row in rows])
+
+    updated = []
+    errors  = []
+
+    for r in results:
+        if r.get("error"):
+            errors.append({"id": r["id"], "name": r["name"], "error": r["error"]})
+            continue
+
+        fields = r["fields"]
+        kw = json.dumps(fields.get("keywords", []))
+
+        if r["ai_analyzed"]:
+            conn.execute(
+                """UPDATE msds SET
+                    product_name  = ?,
+                    manufacturer  = ?,
+                    category      = ?,
+                    hazard_level  = ?,
+                    cas_number    = ?,
+                    revision_date = ?,
+                    description   = ?,
+                    keywords      = ?,
+                    content_html  = ?,
+                    ai_analyzed   = 1,
+                    updated_at    = CURRENT_TIMESTAMP
+                   WHERE id = ?""",
+                (
+                    fields.get("product_name") or r["name"],
+                    fields.get("manufacturer", "-"),
+                    fields.get("category", "기타"),
+                    fields.get("hazard_level", "경고"),
+                    fields.get("cas_number", "-"),
+                    fields.get("revision_date", str(date.today())),
+                    fields.get("description", ""),
+                    kw,
+                    r["content_html"],
+                    r["id"],
+                ),
+            )
+        else:
+            conn.execute(
+                "UPDATE msds SET content_html = ?, updated_at = CURRENT_TIMESTAMP WHERE id = ?",
+                (r["content_html"], r["id"]),
+            )
+
+        conn.commit()
+        updated.append({
+            "id": r["id"],
+            "product_name": fields.get("product_name") or r["name"],
+            "mode": r["mode"],
+        })
+
+    conn.close()
+    return {
+        "message": f"{len(updated)}개 재분석 완료",
+        "updated": updated,
+        "errors": errors,
+    }

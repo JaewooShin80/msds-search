@@ -80,4 +80,9 @@ const api = {
         fd.append('gcs_prefix', prefix);
         return request(`${BASE}/msds/import-gcs-folder`, { method: 'POST', body: fd });
     },
+
+    // 미분석(ai_analyzed=0) 레코드 전체 AI 재분석
+    reanalyzePending() {
+        return request(`${BASE}/msds/reanalyze-pending`, { method: 'POST' });
+    },
 };
