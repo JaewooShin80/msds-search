@@ -5,7 +5,7 @@ Google Drive 유틸리티
 """
 import io
 import re
-from typing import Generator
+from typing import Generator, Optional
 
 _service = None
 
@@ -23,7 +23,7 @@ def _get_service():
     return _service
 
 
-def extract_folder_id(url: str) -> str | None:
+def extract_folder_id(url: str) -> Optional[str]:
     """Google Drive 폴더 URL에서 폴더 ID 추출"""
     patterns = [
         r'/folders/([a-zA-Z0-9_-]+)',

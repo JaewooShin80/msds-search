@@ -73,4 +73,11 @@ const api = {
         fd.append('gdrive_folder_url', url);
         return request(`${BASE}/msds/import-gdrive-folder`, { method: 'POST', body: fd });
     },
+
+    // GCS 폴더 → AI 분석 + DB 등록
+    importGCSFolder(prefix) {
+        const fd = new FormData();
+        fd.append('gcs_prefix', prefix);
+        return request(`${BASE}/msds/import-gcs-folder`, { method: 'POST', body: fd });
+    },
 };

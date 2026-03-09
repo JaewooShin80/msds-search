@@ -306,6 +306,23 @@
             <div class="modal-body">
                 <!-- STEP 1: 파일 선택 -->
                 <div id="bulkStep1">
+                    <!-- GCS 폴더 가져오기 -->
+                    <div class="gcs-import-wrap">
+                        <h4 style="margin:0 0 0.5rem;font-size:0.95rem;color:#1e3a8a;">
+                            <i class="fas fa-cloud"></i> GCS 폴더에서 가져오기
+                        </h4>
+                        <div class="gdrive-input-row">
+                            <i class="fas fa-folder-open gdrive-icon" style="color:#4285f4;"></i>
+                            <input type="text" id="gcsFolderInput" class="gdrive-url-input"
+                                placeholder="폴더 경로 (예: drive-download-20260309T111343Z-3-001)"
+                                value="drive-download-20260309T111343Z-3-001">
+                            <button class="btn btn-primary" id="gcsImportBtn">
+                                <i class="fas fa-cloud-download-alt"></i> 가져오기
+                            </button>
+                        </div>
+                        <small class="gdrive-hint">버킷: <strong>msdsdata</strong> — 폴더 내 PDF를 AI가 자동 분석하여 등록합니다.</small>
+                    </div>
+                    <div class="upload-divider"><span>또는 로컬 파일 업로드</span></div>
                     <div class="upload-drop-zone" id="bulkDropZone">
                         <i class="fas fa-copy fa-3x"></i>
                         <p>여러 PDF 파일을 드래그하거나 클릭하여 선택하세요</p>

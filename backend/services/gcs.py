@@ -6,11 +6,12 @@ import os
 import uuid
 from pathlib import Path
 
+from typing import Optional
 from google.cloud import storage
 
 BUCKET_NAME = os.getenv("GCS_BUCKET", "msdsdata")
 
-_client: storage.Client | None = None
+_client: Optional[storage.Client] = None
 
 
 def _get_client() -> storage.Client:
@@ -60,3 +61,14 @@ def exists(gcs_path: str) -> bool:
     """GCS에 파일이 존재하는지 확인"""
     blob = _get_bucket().blob(gcs_path)
     return blob.exists()
+
+
+def iter_prefix_pdfs(prefix: str):
+    """GCS prefix 내 PDF 파일을 순회하며 (blob_name, 파일명, 바이트) 반환"""
+    from pathlib import Path as _Path
+    bucket = _get_bucket()
+    blobs = list(_get_client().list_blobs(BUCKET_NAME, prefix=prefix))
+    for blob in blobs:
+        if blob.name.lower().endswith(".pdf"):
+            data = blob.download_as_bytes()
+            yield blob.name, _Path(blob.name).name, data

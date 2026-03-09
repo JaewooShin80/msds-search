@@ -195,6 +195,12 @@ function registerEventListeners() {
     // 일괄 파일 선택
     document.getElementById('bulkFileInput').addEventListener('change', handleBulkFilesSelected);
 
+    // GCS 폴더 가져오기
+    document.getElementById('gcsImportBtn').addEventListener('click', handleGCSImport);
+    document.getElementById('gcsFolderInput').addEventListener('keydown', e => {
+        if (e.key === 'Enter') { e.preventDefault(); handleGCSImport(); }
+    });
+
     // 일괄 드래그 앤 드롭
     const bdz = document.getElementById('bulkDropZone');
     bdz.addEventListener('dragover', e => { e.preventDefault(); bdz.classList.add('dragover'); });
@@ -320,8 +326,8 @@ function openPDFModal(id) {
         contentEl.innerHTML = '<p class="no-content">추출된 내용이 없습니다. 원본 PDF 탭을 확인하세요.</p>';
     }
 
-    // 원본 PDF 탭
-    const pdfUrl = m.pdf_path ? `/uploads/pdfs/${m.pdf_path}` : (m.pdf_url || '');
+    // 원본 PDF 탭 (GCS/로컬 모두 download 엔드포인트로 통일)
+    const pdfUrl = (m.pdf_path || m.pdf_url) ? api.downloadUrl(m.id) : '';
     document.getElementById('pdfViewer').src = pdfUrl;
 
     // 다운로드 버튼
@@ -524,8 +530,8 @@ async function submitMsds() {
 }
 
 function getPdfUrl(m) {
-    if (m.pdf_path) return `/uploads/pdfs/${m.pdf_path}`;
-    return m.pdf_url || '#';
+    if (m.pdf_path || m.pdf_url) return api.downloadUrl(m.id);
+    return '#';
 }
 
 // ========== 일괄 등록 ==========
@@ -630,6 +636,76 @@ async function startBulkUpload() {
         btn.disabled = false;
         btn.innerHTML = '<i class="fas fa-cloud-upload-alt"></i> 일괄 등록 시작';
         alert(`업로드 실패: ${err.message}`);
+    }
+}
+
+async function handleGCSImport() {
+    const prefix = document.getElementById('gcsFolderInput').value.trim();
+    if (!prefix) { alert('GCS 폴더 경로를 입력하세요.'); return; }
+
+    const btn = document.getElementById('gcsImportBtn');
+    btn.disabled = true;
+    btn.innerHTML = '<i class="fas fa-spinner fa-spin"></i>';
+
+    document.getElementById('bulkStep1').style.display = 'none';
+    document.getElementById('bulkStep2').style.display = 'block';
+    document.getElementById('bulkProgressMsg').textContent = `GCS 폴더에서 PDF 분석 및 등록 중... (${prefix})`;
+    document.getElementById('bulkStartBtn').style.display = 'none';
+
+    try {
+        const result = await api.importGCSFolder(prefix);
+
+        document.getElementById('bulkStep2').style.display = 'none';
+        document.getElementById('bulkStep3').style.display = 'block';
+
+        let html = `<div class="gdrive-result-summary">
+            <i class="fas fa-check-circle" style="color:#10b981;font-size:2rem;"></i>
+            <h3>${result.message}</h3>
+        </div>`;
+
+        if (result.uploaded.length) {
+            html += '<ul class="gdrive-file-list">';
+            result.uploaded.forEach(f => {
+                const badge = f.mode === 'ai'
+                    ? '<span style="color:#10b981;font-size:0.8rem;"><i class="fas fa-robot"></i> AI</span>'
+                    : '<span style="color:#94a3b8;font-size:0.8rem;"><i class="fas fa-keyboard"></i> 수동</span>';
+                html += `<li>
+                    <i class="fas fa-file-pdf" style="color:#dc2626;"></i>
+                    <span style="flex:1;">${f.product_name || f.filename}</span>
+                    <span style="color:#64748b;font-size:0.8rem;">${f.category || ''}</span>
+                    ${badge}
+                </li>`;
+            });
+            html += '</ul>';
+        }
+        if (result.skipped && result.skipped.length) {
+            html += `<p style="color:#94a3b8;margin-top:0.5rem;font-size:0.85rem;"><i class="fas fa-info-circle"></i> 이미 등록된 파일 ${result.skipped.length}개 건너뜀</p>`;
+        }
+        if (result.errors && result.errors.length) {
+            html += '<h4 style="color:#dc2626;margin-top:1rem;">실패 목록:</h4><ul class="gdrive-file-list">';
+            result.errors.forEach(f => {
+                html += `<li><i class="fas fa-exclamation-circle" style="color:#dc2626;"></i> ${f.filename}: ${f.error}</li>`;
+            });
+            html += '</ul>';
+        }
+
+        document.getElementById('bulkResult').innerHTML = html;
+
+        if (result.uploaded.length) {
+            const [stats, msdsData] = await Promise.all([api.getStats(), api.getMSDS()]);
+            state.allMSDS = msdsData;
+            state.filteredMSDS = msdsData;
+            document.getElementById('totalCount').textContent = stats.total;
+            applyFilters();
+        }
+    } catch (err) {
+        document.getElementById('bulkStep2').style.display = 'none';
+        document.getElementById('bulkStep1').style.display = 'block';
+        document.getElementById('bulkStartBtn').style.display = '';
+        alert(`GCS 가져오기 실패: ${err.message}`);
+    } finally {
+        btn.disabled = false;
+        btn.innerHTML = '<i class="fas fa-cloud-download-alt"></i> 가져오기';
     }
 }
 

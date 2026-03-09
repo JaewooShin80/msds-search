@@ -14,7 +14,7 @@ from fastapi.responses import FileResponse, StreamingResponse
 
 from db.database import get_connection
 from services.analyzer import analyze
-from services.gcs import upload_pdf as gcs_upload_pdf, download_bytes as gcs_download, exists as gcs_exists
+from services.gcs import upload_pdf as gcs_upload_pdf, download_bytes as gcs_download, exists as gcs_exists, iter_prefix_pdfs as gcs_iter_prefix_pdfs
 
 router = APIRouter()
 
@@ -35,7 +35,7 @@ def _save_pdf_to_gcs(pdf_bytes: bytes, original_filename: str) -> str:
     return gcs_upload_pdf(pdf_bytes, original_filename)
 
 
-def _extract_gdrive_file_id(url: str) -> str | None:
+def _extract_gdrive_file_id(url: str) -> Optional[str]:
     """Google Drive 공유 URL에서 파일 ID 추출"""
     patterns = [
         r'/file/d/([a-zA-Z0-9_-]+)',       # /file/d/{id}/view
@@ -174,8 +174,8 @@ async def download(msds_id: int, conn=Depends(get_connection)):
 
     filename_header = f"attachment; filename*=UTF-8''{quote(row['product_name'])}.pdf"
 
-    # 1) GCS 경로 (pdfs/ 로 시작하는 경로)
-    if row["pdf_path"] and row["pdf_path"].startswith("pdfs/"):
+    # 1) GCS 우선 시도 (pdf_path가 있으면 항상 GCS에서 먼저 찾기)
+    if row["pdf_path"]:
         try:
             data = gcs_download(row["pdf_path"])
             return StreamingResponse(
@@ -184,7 +184,7 @@ async def download(msds_id: int, conn=Depends(get_connection)):
                 headers={"Content-Disposition": filename_header},
             )
         except Exception:
-            pass  # GCS 실패 시 다음 방법 시도
+            pass  # GCS 실패 시 로컬 파일 시도
 
     # 2) 로컬 파일 (기존 호환)
     if row["pdf_path"]:
@@ -434,6 +434,85 @@ async def bulk_upload(
     return {
         "message": f"{len(uploaded)}개 MSDS 등록 완료",
         "uploaded": uploaded,
+        "errors": errors,
+    }
+
+
+# ---------- GCS 폴더 → AI 분석 + DB 등록 ----------
+
+@router.post("/import-gcs-folder")
+async def import_gcs_folder(
+    gcs_prefix: str = Form(...),
+    conn=Depends(get_connection),
+):
+    """
+    GCS 버킷 내 특정 폴더(prefix)의 PDF 파일들을:
+    1. GCS 경로를 그대로 pdf_path로 사용 (재업로드 없음)
+    2. AI로 자동 분석 (제품명, 제조사, 카테고리 등)
+    3. DB에 MSDS로 등록 (중복 제외)
+    """
+    prefix = gcs_prefix.rstrip("/") + "/"
+
+    existing_paths = set(
+        r[0] for r in conn.execute("SELECT pdf_path FROM msds WHERE pdf_path IS NOT NULL").fetchall()
+    )
+
+    uploaded = []
+    skipped = []
+    errors = []
+
+    for blob_name, filename, pdf_bytes in gcs_iter_prefix_pdfs(prefix):
+        if blob_name in existing_paths:
+            skipped.append({"filename": filename})
+            continue
+
+        try:
+            result = analyze(pdf_bytes)
+            fields = result.get("fields", {})
+            content_html = result.get("content_html", "")
+            ai_analyzed = 1 if result.get("mode") == "ai" else 0
+
+            kw = json.dumps(fields.get("keywords", []))
+            cur = conn.execute(
+                """
+                INSERT INTO msds
+                    (product_name, manufacturer, category, hazard_level,
+                     cas_number, revision_date, pdf_path, pdf_url,
+                     description, keywords, content_html, ai_analyzed)
+                VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+                """,
+                (
+                    fields.get("product_name") or filename.replace(".pdf", ""),
+                    fields.get("manufacturer", "-"),
+                    fields.get("category", "기타"),
+                    fields.get("hazard_level", "경고"),
+                    fields.get("cas_number", "-"),
+                    fields.get("revision_date", str(date.today())),
+                    blob_name,
+                    None,
+                    fields.get("description", ""),
+                    kw,
+                    content_html,
+                    ai_analyzed,
+                ),
+            )
+            conn.commit()
+
+            uploaded.append({
+                "id": cur.lastrowid,
+                "filename": filename,
+                "product_name": fields.get("product_name") or filename,
+                "category": fields.get("category", "기타"),
+                "mode": result.get("mode", "manual"),
+            })
+        except Exception as e:
+            errors.append({"filename": filename, "error": str(e)})
+
+    conn.close()
+    return {
+        "message": f"{len(uploaded)}개 MSDS 등록 완료 (건너뜀: {len(skipped)}개)",
+        "uploaded": uploaded,
+        "skipped": skipped,
         "errors": errors,
     }
 
