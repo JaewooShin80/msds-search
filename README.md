@@ -1,3 +1,4 @@
+<<<<<<< HEAD
 # 🛡️ MSDS 검색 시스템
 
 > **물질안전보건자료(Material Safety Data Sheet) 전문 검색 및 관리 시스템**
@@ -399,3 +400,7 @@ git commit -m "MSDS 1000개 추가"
 **라이선스**: MIT  
 
 🛡️ **안전한 작업 환경을 위한 MSDS 관리 시스템**
+=======
+# MDSD-Search
+MDSD web Search app
+>>>>>>> 15d354c3ad5d6747d5a285cc68ccd7086a8cf23f
