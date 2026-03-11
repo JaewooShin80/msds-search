@@ -93,10 +93,8 @@ async def _download_from_gdrive(url: str) -> bytes:
 
 @router.post("/analyze", dependencies=[Depends(require_admin)])
 async def analyze_pdf(pdf: UploadFile = File(...)):
-    if pdf.content_type != "application/pdf":
-        raise HTTPException(status_code=400, detail="PDF 파일만 업로드 가능합니다.")
     pdf_bytes = await pdf.read()
-    _validate_pdf(pdf_bytes)                              # H4
+    _validate_pdf(pdf_bytes)                              # H4 — magic bytes로 PDF 검증
     result = await asyncio.to_thread(analyze, pdf_bytes)  # H6
     result["extracted_preview"] = result.pop("extracted", "")[:3000]
     return result
@@ -400,12 +398,8 @@ async def bulk_upload(
     for pdf in pdfs:
         filename = pdf.filename or "unknown.pdf"
         try:
-            if pdf.content_type and pdf.content_type != "application/pdf":
-                errors.append({"filename": filename, "error": "PDF 파일이 아닙니다."})
-                continue
-
             pdf_bytes = await pdf.read()
-            _validate_pdf(pdf_bytes)                                  # H4
+            _validate_pdf(pdf_bytes)                                  # H4 — magic bytes로 PDF 검증
 
             gcs_path = gcs_upload_pdf(pdf_bytes, filename)
 
