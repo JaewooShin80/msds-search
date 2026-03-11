@@ -1,0 +1,458 @@
+<!DOCTYPE html>
+<html lang="ko">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>MSDS 관리자</title>
+    <link href="https://fonts.googleapis.com/css2?family=Noto+Sans+KR:wght@300;400;500;600;700&display=swap" rel="stylesheet">
+    <link rel="stylesheet" href="https://cdn.jsdelivr.net/npm/@fortawesome/fontawesome-free@6.4.0/css/all.min.css">
+    <link rel="stylesheet" href="css/style.css">
+    <style>
+        /* ===== 로그인 오버레이 ===== */
+        #loginOverlay {
+            position: fixed; inset: 0;
+            background: rgba(15, 23, 42, 0.85);
+            display: flex; align-items: center; justify-content: center;
+            z-index: 10000;
+        }
+        .login-card {
+            background: #fff;
+            border-radius: 12px;
+            padding: 2.5rem 2rem;
+            width: 100%; max-width: 380px;
+            box-shadow: 0 20px 60px rgba(0,0,0,0.4);
+            text-align: center;
+        }
+        .login-card .login-icon {
+            font-size: 2.5rem; color: #1e3a8a; margin-bottom: 1rem;
+        }
+        .login-card h2 { margin: 0 0 0.25rem; font-size: 1.4rem; color: #1e293b; }
+        .login-card p  { margin: 0 0 1.5rem; color: #64748b; font-size: 0.9rem; }
+        .login-field {
+            display: flex; align-items: center; gap: 0.6rem;
+            border: 1.5px solid #e2e8f0; border-radius: 8px;
+            padding: 0.6rem 0.8rem; margin-bottom: 0.75rem;
+            background: #f8fafc;
+        }
+        .login-field i { color: #94a3b8; width: 16px; }
+        .login-field input {
+            flex: 1; border: none; background: transparent;
+            font-size: 0.95rem; color: #1e293b; outline: none;
+        }
+        .login-field input::placeholder { color: #94a3b8; }
+        .btn-login {
+            width: 100%; padding: 0.75rem;
+            background: #1e3a8a; color: #fff;
+            border: none; border-radius: 8px;
+            font-size: 1rem; font-weight: 600; cursor: pointer;
+            margin-top: 0.5rem; transition: background 0.2s;
+        }
+        .btn-login:hover { background: #1e40af; }
+        .login-error {
+            color: #dc2626; font-size: 0.85rem;
+            margin-top: 0.75rem; display: none;
+        }
+        .login-error.show { display: block; }
+
+        /* ===== 어드민 배지 ===== */
+        .admin-badge {
+            background: #dc2626; color: #fff;
+            font-size: 0.7rem; font-weight: 700;
+            padding: 2px 7px; border-radius: 4px;
+            letter-spacing: 0.05em; vertical-align: middle;
+            margin-left: 6px;
+        }
+        .btn-logout {
+            background: transparent; border: 1.5px solid rgba(255,255,255,0.4);
+            color: #fff; font-size: 0.85rem; padding: 0.4rem 0.9rem;
+            border-radius: 6px; cursor: pointer; transition: background 0.2s;
+        }
+        .btn-logout:hover { background: rgba(255,255,255,0.15); }
+
+        /* ===== 카드 관리 버튼 ===== */
+        .card-admin-actions {
+            display: flex; gap: 0.4rem; margin-top: 0.5rem;
+        }
+        .btn-edit   { background: #f59e0b; color: #fff; border: none; border-radius: 6px; padding: 0.35rem 0.75rem; cursor: pointer; font-size: 0.82rem; }
+        .btn-delete { background: #ef4444; color: #fff; border: none; border-radius: 6px; padding: 0.35rem 0.75rem; cursor: pointer; font-size: 0.82rem; }
+        .btn-edit:hover   { background: #d97706; }
+        .btn-delete:hover { background: #dc2626; }
+    </style>
+</head>
+<body>
+
+<!-- ===== 로그인 오버레이 ===== -->
+<div id="loginOverlay">
+    <div class="login-card">
+        <div class="login-icon"><i class="fas fa-shield-alt"></i></div>
+        <h2>관리자 로그인</h2>
+        <p>MSDS 관리 시스템에 접근하려면 로그인하세요.</p>
+        <div class="login-field">
+            <i class="fas fa-user"></i>
+            <input type="text" id="loginId" placeholder="아이디" autocomplete="username">
+        </div>
+        <div class="login-field">
+            <i class="fas fa-lock"></i>
+            <input type="password" id="loginPw" placeholder="비밀번호" autocomplete="current-password">
+        </div>
+        <button class="btn-login" id="loginBtn">
+            <i class="fas fa-sign-in-alt"></i> 로그인
+        </button>
+        <div class="login-error" id="loginError"></div>
+    </div>
+</div>
+
+<!-- ===== Header ===== -->
+<header class="header">
+    <div class="container">
+        <div class="header-content">
+            <div class="logo">
+                <i class="fas fa-shield-alt"></i>
+                <span>MSDS 검색 시스템 <span class="admin-badge">ADMIN</span></span>
+            </div>
+            <div class="header-actions">
+                <div class="header-stats">
+                    <div class="stat-item">
+                        <span class="stat-number" id="totalCount">0</span>
+                        <span class="stat-label">전체 자료</span>
+                    </div>
+                    <div class="stat-item">
+                        <span class="stat-number" id="categoryCount">17</span>
+                        <span class="stat-label">카테고리</span>
+                    </div>
+                </div>
+                <div class="header-btns">
+                    <a href="/dashboard.html" class="btn btn-outline">
+                        <i class="fas fa-chart-bar"></i> 대시보드
+                    </a>
+                    <button class="btn btn-bulk" id="bulkUploadBtn">
+                        <i class="fas fa-file-upload"></i> 일괄 등록
+                    </button>
+                    <button class="btn btn-reanalyze" id="reanalyzeBtn" style="display:none;">
+                        <i class="fas fa-robot"></i> AI 재분석 <span id="pendingBadge" class="pending-badge"></span>
+                    </button>
+                    <button class="btn btn-primary" id="uploadBtn">
+                        <i class="fas fa-upload"></i> MSDS 등록
+                    </button>
+                    <button class="btn-logout" id="logoutBtn">
+                        <i class="fas fa-sign-out-alt"></i> 로그아웃
+                    </button>
+                </div>
+            </div>
+        </div>
+    </div>
+</header>
+
+<!-- Search Section -->
+<section class="search-section">
+    <div class="container">
+        <div class="search-box">
+            <i class="fas fa-search search-icon"></i>
+            <input type="text" id="searchInput" class="search-input"
+                placeholder="제품명, 제조사, CAS 번호로 검색..." autocomplete="off">
+            <button class="clear-search" id="clearSearch" style="display: none;">
+                <i class="fas fa-times"></i>
+            </button>
+        </div>
+        <div class="search-results-info" id="searchResultsInfo"></div>
+    </div>
+</section>
+
+<!-- Filters Section -->
+<section class="filters-section">
+    <div class="container">
+        <div class="filters-header">
+            <h2><i class="fas fa-filter"></i> 필터</h2>
+            <button class="btn-reset" id="resetFilters">
+                <i class="fas fa-redo"></i> 초기화
+            </button>
+        </div>
+        <div class="filter-group">
+            <h3 class="filter-title">
+                <i class="fas fa-layer-group"></i> 카테고리
+                <button class="toggle-filter" data-target="categoryFilter"><i class="fas fa-chevron-down"></i></button>
+            </h3>
+            <div class="filter-content" id="categoryFilter">
+                <div class="filter-grid" id="categoryFilterList"></div>
+            </div>
+        </div>
+        <div class="filter-group">
+            <h3 class="filter-title">
+                <i class="fas fa-exclamation-triangle"></i> 위험등급
+                <button class="toggle-filter" data-target="hazardFilter"><i class="fas fa-chevron-down"></i></button>
+            </h3>
+            <div class="filter-content" id="hazardFilter">
+                <div class="filter-grid" id="hazardFilterList"></div>
+            </div>
+        </div>
+        <div class="filter-group">
+            <h3 class="filter-title">
+                <i class="fas fa-industry"></i> 제조사
+                <button class="toggle-filter" data-target="manufacturerFilter"><i class="fas fa-chevron-down"></i></button>
+            </h3>
+            <div class="filter-content" id="manufacturerFilter">
+                <div class="filter-grid" id="manufacturerFilterList"></div>
+            </div>
+        </div>
+    </div>
+</section>
+
+<!-- MSDS Cards Section -->
+<section class="cards-section">
+    <div class="container">
+        <div class="section-header">
+            <h2><i class="fas fa-file-alt"></i> MSDS 목록</h2>
+            <div class="view-options">
+                <button class="view-btn active" data-view="grid" title="그리드 보기"><i class="fas fa-th"></i></button>
+                <button class="view-btn" data-view="list" title="리스트 보기"><i class="fas fa-list"></i></button>
+            </div>
+        </div>
+        <div class="cards-grid" id="cardsContainer"></div>
+        <div class="no-results" id="noResults" style="display: none;">
+            <i class="fas fa-search"></i>
+            <h3>검색 결과가 없습니다</h3>
+            <p>다른 검색어나 필터를 시도해보세요.</p>
+        </div>
+    </div>
+</section>
+
+<!-- ========== PDF 상세보기 모달 ========== -->
+<div class="modal" id="pdfModal">
+    <div class="modal-overlay"></div>
+    <div class="modal-content">
+        <div class="modal-header">
+            <h2 id="modalTitle">MSDS 상세보기</h2>
+            <button class="modal-close" id="closeModal"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+            <div class="msds-info" id="msdsInfo"></div>
+            <div class="viewer-tabs">
+                <button class="vtab active" data-tab="content"><i class="fas fa-align-left"></i> 내용 보기</button>
+                <button class="vtab" data-tab="pdf"><i class="fas fa-file-pdf"></i> 원본 PDF</button>
+            </div>
+            <div class="tab-pane active" id="tabContent">
+                <div class="msds-content-html" id="msdsContentHtml"></div>
+            </div>
+            <div class="tab-pane" id="tabPdf" style="display:none;">
+                <div class="pdf-viewer-container">
+                    <iframe id="pdfViewer" frameborder="0"></iframe>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <a href="#" class="btn btn-primary" id="downloadBtn">
+                <i class="fas fa-download"></i> 다운로드
+            </a>
+            <button class="btn btn-secondary" id="closeModalBtn">
+                <i class="fas fa-times"></i> 닫기
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ========== MSDS 등록/수정 모달 ========== -->
+<div class="modal" id="uploadModal">
+    <div class="modal-overlay"></div>
+    <div class="modal-content modal-content--wide">
+        <div class="modal-header">
+            <h2 id="uploadModalTitle">MSDS 등록</h2>
+            <button class="modal-close" id="closeUploadModal"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body upload-modal-body">
+            <!-- STEP 1: 파일 선택 (신규 등록 시) -->
+            <div id="uploadStep1">
+                <div class="upload-drop-zone" id="dropZone">
+                    <i class="fas fa-cloud-upload-alt fa-3x"></i>
+                    <p>PDF 파일을 드래그하거나 클릭하여 선택하세요</p>
+                    <input type="file" id="pdfFileInput" accept=".pdf" style="display:none">
+                    <button class="btn btn-primary" onclick="document.getElementById('pdfFileInput').click()">
+                        <i class="fas fa-folder-open"></i> 파일 선택
+                    </button>
+                </div>
+                <div class="upload-divider"><span>또는</span></div>
+                <div class="gdrive-input-wrap">
+                    <div class="gdrive-input-row">
+                        <i class="fab fa-google-drive gdrive-icon"></i>
+                        <input type="text" id="gdriveUrlInput" class="gdrive-url-input"
+                            placeholder="Google Drive 공유 링크를 붙여넣으세요">
+                        <button class="btn btn-primary" id="gdriveSubmitBtn">
+                            <i class="fas fa-arrow-right"></i> 가져오기
+                        </button>
+                    </div>
+                    <small class="gdrive-hint">파일 공유 설정이 "링크가 있는 모든 사용자"로 되어 있어야 합니다.</small>
+                </div>
+                <div class="upload-hint" id="uploadHint"></div>
+            </div>
+
+            <!-- STEP 2: 분석 중 -->
+            <div id="uploadStep2" style="display:none;">
+                <div class="analyzing-box">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <p id="analyzingMsg">PDF 분석 중...</p>
+                </div>
+            </div>
+
+            <!-- STEP 3: 등록/수정 폼 -->
+            <div id="uploadStep3" style="display:none;">
+                <div class="upload-layout">
+                    <div class="extracted-preview" id="extractedPreview">
+                        <h4><i class="fas fa-file-alt"></i> PDF 추출 내용 (참조용)</h4>
+                        <pre id="extractedText"></pre>
+                    </div>
+                    <div class="upload-form-wrap">
+                        <div class="ai-badge" id="aiBadge" style="display:none;">
+                            <i class="fas fa-robot"></i> AI 자동 분석 완료 — 내용을 확인 후 등록하세요
+                        </div>
+                        <div class="manual-badge" id="manualBadge" style="display:none;">
+                            <i class="fas fa-keyboard"></i> 수동 입력 모드 — PDF 내용을 참고하여 입력하세요
+                        </div>
+                        <form id="msdsForm" class="msds-form">
+                            <input type="hidden" id="editId" value="">
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>제품명 <span class="required">*</span></label>
+                                    <input type="text" name="product_name" required placeholder="제품명을 입력하세요">
+                                </div>
+                                <div class="form-group">
+                                    <label>제조사 <span class="required">*</span></label>
+                                    <input type="text" name="manufacturer" required placeholder="제조사명을 입력하세요">
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>카테고리 <span class="required">*</span></label>
+                                    <select name="category" required>
+                                        <option value="">카테고리 선택</option>
+                                        <option>용접재료</option><option>절단/연마</option>
+                                        <option>윤활유/그리스</option><option>연료(유류)</option>
+                                        <option>시멘트류</option><option>콘크리트혼화제</option>
+                                        <option>콘크리트 응집제</option><option>박리제</option>
+                                        <option>품질시험</option><option>스프레이류</option>
+                                        <option>가스류</option><option>요소수</option>
+                                        <option>부동액</option><option>경화제</option>
+                                        <option>몰탈/접착제</option><option>발파/폭약류</option>
+                                        <option>기타</option>
+                                    </select>
+                                </div>
+                                <div class="form-group">
+                                    <label>위험등급 <span class="required">*</span></label>
+                                    <select name="hazard_level" required>
+                                        <option value="경고">경고</option>
+                                        <option value="위험">위험</option>
+                                        <option value="주의">주의</option>
+                                    </select>
+                                </div>
+                            </div>
+                            <div class="form-row">
+                                <div class="form-group">
+                                    <label>CAS 번호</label>
+                                    <input type="text" name="cas_number" value="-" placeholder="-">
+                                </div>
+                                <div class="form-group">
+                                    <label>개정일 <span class="required">*</span></label>
+                                    <input type="date" name="revision_date" required>
+                                </div>
+                            </div>
+                            <div class="form-group">
+                                <label>제품 설명</label>
+                                <textarea name="description" rows="2" placeholder="제품에 대한 간략한 설명"></textarea>
+                            </div>
+                            <div class="form-group">
+                                <label>키워드 <small>(쉼표로 구분)</small></label>
+                                <input type="text" name="keywords_raw" placeholder="예: 용접, 와이어, 플럭스">
+                            </div>
+                            <input type="hidden" name="ai_analyzed" value="0">
+                            <input type="hidden" name="content_html" id="hiddenContentHtml">
+                        </form>
+                    </div>
+                </div>
+            </div>
+        </div>
+        <div class="modal-footer" id="uploadFooter" style="display:none;">
+            <button class="btn btn-primary" id="submitMsdsBtn">
+                <i class="fas fa-save"></i> 등록하기
+            </button>
+            <button class="btn btn-secondary" id="cancelUploadBtn">
+                <i class="fas fa-times"></i> 취소
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- ========== 일괄 등록 모달 ========== -->
+<div class="modal" id="bulkModal">
+    <div class="modal-overlay"></div>
+    <div class="modal-content modal-content--narrow">
+        <div class="modal-header">
+            <h2><i class="fas fa-file-upload"></i> MSDS 일괄 등록</h2>
+            <button class="modal-close" id="closeBulkModal"><i class="fas fa-times"></i></button>
+        </div>
+        <div class="modal-body">
+            <div id="bulkStep1">
+                <div class="gcs-import-wrap">
+                    <h4 style="margin:0 0 0.5rem;font-size:0.95rem;color:#1e3a8a;">
+                        <i class="fas fa-cloud"></i> GCS 폴더에서 가져오기
+                    </h4>
+                    <div class="gdrive-input-row">
+                        <i class="fas fa-folder-open gdrive-icon" style="color:#4285f4;"></i>
+                        <input type="text" id="gcsFolderInput" class="gdrive-url-input"
+                            placeholder="폴더 경로 (예: drive-download-20260309T111343Z-3-001)"
+                            value="drive-download-20260309T111343Z-3-001">
+                        <button class="btn btn-primary" id="gcsImportBtn">
+                            <i class="fas fa-cloud-download-alt"></i> 가져오기
+                        </button>
+                    </div>
+                    <small class="gdrive-hint">버킷: <strong>msdsdata</strong> — 폴더 내 PDF를 AI가 자동 분석하여 등록합니다.</small>
+                </div>
+                <div class="upload-divider"><span>또는 로컬 파일 업로드</span></div>
+                <div class="upload-drop-zone" id="bulkDropZone">
+                    <i class="fas fa-copy fa-3x"></i>
+                    <p>여러 PDF 파일을 드래그하거나 클릭하여 선택하세요</p>
+                    <input type="file" id="bulkFileInput" accept=".pdf" multiple style="display:none">
+                    <button class="btn btn-primary" onclick="document.getElementById('bulkFileInput').click()">
+                        <i class="fas fa-folder-open"></i> 파일 선택 (다중)
+                    </button>
+                </div>
+                <div id="bulkFileList" class="bulk-file-list" style="display:none;">
+                    <h4><i class="fas fa-list"></i> 선택된 파일 (<span id="bulkFileCount">0</span>개)</h4>
+                    <ul id="bulkFileNames"></ul>
+                </div>
+                <p class="bulk-info">
+                    <i class="fas fa-info-circle"></i>
+                    PDF 파일을 업로드하면 AI가 자동으로 분석하여 제품명, 카테고리, 위험등급 등을 분류합니다.
+                </p>
+            </div>
+            <div id="bulkStep2" style="display:none;">
+                <div class="analyzing-box">
+                    <i class="fas fa-spinner fa-spin fa-2x"></i>
+                    <p id="bulkProgressMsg">PDF 업로드 및 AI 분석 중...</p>
+                </div>
+            </div>
+            <div id="bulkStep3" style="display:none;">
+                <div class="gdrive-result" id="bulkResult"></div>
+            </div>
+        </div>
+        <div class="modal-footer">
+            <button class="btn btn-primary" id="bulkStartBtn" disabled>
+                <i class="fas fa-cloud-upload-alt"></i> 일괄 등록 시작
+            </button>
+            <button class="btn btn-secondary" id="closeBulkModalBtn">
+                <i class="fas fa-times"></i> 닫기
+            </button>
+        </div>
+    </div>
+</div>
+
+<!-- Footer -->
+<footer class="footer">
+    <div class="container">
+        <div class="footer-content">
+            <p>&copy; 2026 MSDS 검색 시스템. All rights reserved.</p>
+        </div>
+    </div>
+</footer>
+
+<script src="js/api.js"></script>
+<script src="js/admin.js"></script>
+</body>
+</html>

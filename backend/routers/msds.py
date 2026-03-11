@@ -12,6 +12,7 @@ from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from typing import List
 from fastapi.responses import FileResponse, StreamingResponse
 
+from auth import require_admin
 from db.database import get_connection
 from services.analyzer import analyze
 from services.gcs import upload_pdf as gcs_upload_pdf, download_bytes as gcs_download, exists as gcs_exists, iter_prefix_pdfs as gcs_iter_prefix_pdfs
@@ -79,7 +80,7 @@ async def _download_from_gdrive(url: str) -> bytes:
 
 # ---------- PDF 분석 (등록 전 미리보기) ----------
 
-@router.post("/analyze")
+@router.post("/analyze", dependencies=[Depends(require_admin)])
 async def analyze_pdf(pdf: UploadFile = File(...)):
     """
     PDF를 업로드하면 텍스트를 추출하고 AI(또는 수동 입력용 빈 폼)를 반환합니다.
@@ -99,7 +100,7 @@ async def analyze_pdf(pdf: UploadFile = File(...)):
     return result
 
 
-@router.post("/analyze-gdrive")
+@router.post("/analyze-gdrive", dependencies=[Depends(require_admin)])
 async def analyze_gdrive(gdrive_url: str = Form(...)):
     """Google Drive URL에서 PDF를 다운로드하여 분석"""
     pdf_bytes = await _download_from_gdrive(gdrive_url)
@@ -219,7 +220,7 @@ async def download(msds_id: int, conn=Depends(get_connection)):
 
 # ---------- 등록 ----------
 
-@router.post("", status_code=201)
+@router.post("", status_code=201, dependencies=[Depends(require_admin)])
 async def create(
     product_name:  str  = Form(...),
     manufacturer:  str  = Form(...),
@@ -276,7 +277,7 @@ async def create(
 
 # ---------- 수정 ----------
 
-@router.put("/{msds_id}")
+@router.put("/{msds_id}", dependencies=[Depends(require_admin)])
 async def update(
     msds_id:       int,
     product_name:  Optional[str] = Form(None),
@@ -359,7 +360,7 @@ async def update(
 
 # ---------- 삭제 ----------
 
-@router.delete("/{msds_id}")
+@router.delete("/{msds_id}", dependencies=[Depends(require_admin)])
 def delete(msds_id: int, conn=Depends(get_connection)):
     cur = conn.cursor()
     cur.execute("SELECT * FROM msds WHERE id = %s", (msds_id,))
@@ -375,7 +376,7 @@ def delete(msds_id: int, conn=Depends(get_connection)):
 
 # ---------- 로컬 파일 다중 업로드 + AI 분석 + DB 등록 ----------
 
-@router.post("/bulk-upload")
+@router.post("/bulk-upload", dependencies=[Depends(require_admin)])
 async def bulk_upload(
     pdfs: List[UploadFile] = File(...),
     conn=Depends(get_connection),
@@ -458,7 +459,7 @@ async def bulk_upload(
 
 # ---------- GCS 폴더 → AI 분석 + DB 등록 ----------
 
-@router.post("/import-gcs-folder")
+@router.post("/import-gcs-folder", dependencies=[Depends(require_admin)])
 async def import_gcs_folder(
     gcs_prefix: str = Form(...),
     conn=Depends(get_connection),
@@ -565,7 +566,7 @@ async def import_gcs_folder(
 
 # ---------- Google Drive 폴더 → GCS 업로드 + AI 분석 + DB 등록 ----------
 
-@router.post("/import-gdrive-folder")
+@router.post("/import-gdrive-folder", dependencies=[Depends(require_admin)])
 def import_gdrive_folder(
     gdrive_folder_url: str = Form(...),
     conn=Depends(get_connection),
@@ -647,7 +648,7 @@ def import_gdrive_folder(
 
 # ---------- 미분석 레코드 AI 재분석 ----------
 
-@router.post("/reanalyze-pending")
+@router.post("/reanalyze-pending", dependencies=[Depends(require_admin)])
 async def reanalyze_pending(conn=Depends(get_connection)):
     """
     DB에 등록된 레코드 중 ai_analyzed=0 인 항목을:

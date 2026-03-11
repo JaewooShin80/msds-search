@@ -33,15 +33,9 @@
                         <a href="/dashboard.html" class="btn btn-outline">
                             <i class="fas fa-chart-bar"></i> 대시보드
                         </a>
-                        <button class="btn btn-bulk" id="bulkUploadBtn">
-                            <i class="fas fa-file-upload"></i> 일괄 등록
-                        </button>
-                        <button class="btn btn-reanalyze" id="reanalyzeBtn" style="display:none;">
-                            <i class="fas fa-robot"></i> AI 재분석 <span id="pendingBadge" class="pending-badge"></span>
-                        </button>
-                        <button class="btn btn-primary" id="uploadBtn">
-                            <i class="fas fa-upload"></i> MSDS 등록
-                        </button>
+                        <a href="/admin.html" class="btn btn-outline" style="font-size:0.85rem;opacity:0.7;">
+                            <i class="fas fa-lock"></i> 관리자
+                        </a>
                     </div>
                 </div>
             </div>
@@ -165,8 +159,9 @@
         </div>
     </div>
 
+    <!-- (관리자 전용 모달은 admin.html로 이동) -->
     <!-- ========== MSDS 등록 모달 ========== -->
-    <div class="modal" id="uploadModal">
+    <div class="modal" id="uploadModal" style="display:none !important;">
         <div class="modal-overlay"></div>
         <div class="modal-content modal-content--wide">
             <div class="modal-header">
@@ -299,7 +294,7 @@
     </div>
 
     <!-- ========== 일괄 등록 모달 ========== -->
-    <div class="modal" id="bulkModal">
+    <div class="modal" id="bulkModal" style="display:none !important;">
         <div class="modal-overlay"></div>
         <div class="modal-content modal-content--narrow">
             <div class="modal-header">
