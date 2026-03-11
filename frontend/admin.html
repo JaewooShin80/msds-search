@@ -69,6 +69,22 @@
         }
         .btn-logout:hover { background: rgba(255,255,255,0.15); }
 
+        /* ===== 일괄 등록 탭 ===== */
+        .bulk-tabs {
+            display: flex; gap: 0.5rem; margin-bottom: 1rem;
+        }
+        .bulk-tab {
+            flex: 1; padding: 0.55rem 0.75rem;
+            border: 1.5px solid #e2e8f0; border-radius: 8px;
+            background: #f8fafc; color: #64748b;
+            font-size: 0.9rem; font-weight: 500; cursor: pointer;
+            transition: all 0.15s;
+        }
+        .bulk-tab.active {
+            background: #1e3a8a; color: #fff; border-color: #1e3a8a;
+        }
+        .bulk-tab:not(.active):hover { background: #e2e8f0; }
+
         /* ===== 카드 관리 버튼 ===== */
         .card-admin-actions {
             display: flex; gap: 0.4rem; margin-top: 0.5rem;
@@ -269,18 +285,6 @@
                         <i class="fas fa-folder-open"></i> 파일 선택
                     </button>
                 </div>
-                <div class="upload-divider"><span>또는</span></div>
-                <div class="gdrive-input-wrap">
-                    <div class="gdrive-input-row">
-                        <i class="fab fa-google-drive gdrive-icon"></i>
-                        <input type="text" id="gdriveUrlInput" class="gdrive-url-input"
-                            placeholder="Google Drive 공유 링크를 붙여넣으세요">
-                        <button class="btn btn-primary" id="gdriveSubmitBtn">
-                            <i class="fas fa-arrow-right"></i> 가져오기
-                        </button>
-                    </div>
-                    <small class="gdrive-hint">파일 공유 설정이 "링크가 있는 모든 사용자"로 되어 있어야 합니다.</small>
-                </div>
                 <div class="upload-hint" id="uploadHint"></div>
             </div>
 
@@ -389,29 +393,41 @@
         </div>
         <div class="modal-body">
             <div id="bulkStep1">
-                <div class="gcs-import-wrap">
-                    <h4 style="margin:0 0 0.5rem;font-size:0.95rem;color:#1e3a8a;">
-                        <i class="fas fa-cloud"></i> GCS 폴더에서 가져오기
-                    </h4>
-                    <div class="gdrive-input-row">
-                        <i class="fas fa-folder-open gdrive-icon" style="color:#4285f4;"></i>
-                        <input type="text" id="gcsFolderInput" class="gdrive-url-input"
-                            placeholder="폴더 경로 (예: pdfs/2024-01)">
-                        <button class="btn btn-primary" id="gcsImportBtn">
-                            <i class="fas fa-cloud-download-alt"></i> 가져오기
-                        </button>
-                    </div>
-                    <small class="gdrive-hint">버킷: <strong>msdsdata</strong> — 폴더 내 PDF를 AI가 자동 분석하여 등록합니다.</small>
-                </div>
-                <div class="upload-divider"><span>또는 로컬 파일 업로드</span></div>
-                <div class="upload-drop-zone" id="bulkDropZone">
-                    <i class="fas fa-copy fa-3x"></i>
-                    <p>여러 PDF 파일을 드래그하거나 클릭하여 선택하세요</p>
-                    <input type="file" id="bulkFileInput" accept=".pdf" multiple style="display:none">
-                    <button class="btn btn-primary" onclick="document.getElementById('bulkFileInput').click()">
-                        <i class="fas fa-folder-open"></i> 파일 선택 (다중)
+                <!-- 탭 버튼 -->
+                <div class="bulk-tabs">
+                    <button class="bulk-tab active" data-bulk-tab="files">
+                        <i class="fas fa-file"></i> 파일 선택
+                    </button>
+                    <button class="bulk-tab" data-bulk-tab="folder">
+                        <i class="fas fa-folder"></i> 폴더 선택
                     </button>
                 </div>
+
+                <!-- 탭1: 파일 다중 선택 -->
+                <div class="bulk-tab-pane" id="bulkTabFiles">
+                    <div class="upload-drop-zone" id="bulkDropZone">
+                        <i class="fas fa-copy fa-3x"></i>
+                        <p>여러 PDF 파일을 드래그하거나 클릭하여 선택하세요</p>
+                        <input type="file" id="bulkFileInput" accept=".pdf" multiple style="display:none">
+                        <button class="btn btn-primary" onclick="document.getElementById('bulkFileInput').click()">
+                            <i class="fas fa-folder-open"></i> 파일 선택 (다중)
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 탭2: 폴더 선택 -->
+                <div class="bulk-tab-pane" id="bulkTabFolder" style="display:none;">
+                    <div class="upload-drop-zone" id="folderDropZone">
+                        <i class="fas fa-folder-open fa-3x"></i>
+                        <p>폴더를 드래그하거나 클릭하여 선택하세요 (PDF 자동 필터)</p>
+                        <input type="file" id="folderFileInput" webkitdirectory style="display:none">
+                        <button class="btn btn-primary" onclick="document.getElementById('folderFileInput').click()">
+                            <i class="fas fa-folder"></i> 폴더 선택
+                        </button>
+                    </div>
+                </div>
+
+                <!-- 공통: 선택된 파일 목록 -->
                 <div id="bulkFileList" class="bulk-file-list" style="display:none;">
                     <h4><i class="fas fa-list"></i> 선택된 파일 (<span id="bulkFileCount">0</span>개)</h4>
                     <ul id="bulkFileNames"></ul>
