@@ -129,8 +129,9 @@ function registerEventListeners() {
     });
 
     document.getElementById('cardsContainer').addEventListener('click', e => {
-        const btn = e.target.closest('.btn-pdf');
-        if (btn) openPDFModal(parseInt(btn.closest('.msds-card').dataset.id, 10));
+        if (e.target.closest('.btn-download')) return; // 다운로드 버튼은 기본 동작 유지
+        const card = e.target.closest('.msds-card');
+        if (card) openPDFModal(parseInt(card.dataset.id, 10));
     });
 
     document.querySelectorAll('.vtab').forEach(btn => {
@@ -222,7 +223,7 @@ function renderCards() {
             </div>
             <div class="card-footer">
                 <button class="btn btn-primary btn-pdf"><i class="fas fa-file-pdf"></i> 상세보기</button>
-                <a href="${api.downloadUrl(m.id)}" class="btn btn-secondary" download>
+                <a href="${api.downloadUrl(m.id)}" class="btn btn-secondary btn-download" download>
                     <i class="fas fa-download"></i> 다운로드
                 </a>
             </div>
@@ -266,11 +267,11 @@ function openPDFModal(id) {
     document.getElementById('pdfViewer').src = pdfUrl;
     document.getElementById('downloadBtn').href = api.downloadUrl(m.id);
 
-    const showContent = !!m.content_html;
+    // 기본: PDF 뷰어 탭 표시 (원본 PDF 우선)
     document.querySelectorAll('.vtab').forEach(b => b.classList.remove('active'));
-    document.querySelector(`.vtab[data-tab="${showContent ? 'content' : 'pdf'}"]`).classList.add('active');
-    document.getElementById('tabContent').style.display = showContent ? 'block' : 'none';
-    document.getElementById('tabPdf').style.display    = showContent ? 'none'  : 'block';
+    document.querySelector('.vtab[data-tab="pdf"]').classList.add('active');
+    document.getElementById('tabContent').style.display = 'none';
+    document.getElementById('tabPdf').style.display    = 'block';
 
     document.getElementById('pdfModal').classList.add('active');
     document.body.style.overflow = 'hidden';

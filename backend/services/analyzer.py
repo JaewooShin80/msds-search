@@ -238,6 +238,9 @@ def analyze(pdf_bytes: bytes) -> dict:
             # 날짜 기본값 보정
             if not fields.get("revision_date"):
                 fields["revision_date"] = str(date.today())
+            # 카테고리 유효성 보정 — 목록에 없으면 "기타"
+            if fields.get("category") not in CATEGORIES:
+                fields["category"] = "기타"
             return {
                 "mode": "ai",
                 "extracted": text,
