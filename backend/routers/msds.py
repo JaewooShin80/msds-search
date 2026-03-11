@@ -179,7 +179,7 @@ async def download(msds_id: int, conn=Depends(get_connection)):
     if not row:
         raise HTTPException(status_code=404, detail="MSDS를 찾을 수 없습니다.")
 
-    filename_header = f"attachment; filename*=UTF-8''{quote(row['product_name'])}.pdf"
+    filename_header = f"inline; filename*=UTF-8''{quote(row['product_name'])}.pdf"
 
     # 1) GCS 우선 시도
     if row["pdf_path"]:

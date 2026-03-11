@@ -76,10 +76,7 @@ async function handleLogin() {
 
 function handleLogout() {
     sessionStorage.removeItem('adminToken');
-    document.getElementById('loginId').value = '';
-    document.getElementById('loginPw').value = '';
-    document.getElementById('loginError').classList.remove('show');
-    showLoginOverlay();
+    window.location.href = '/';
 }
 
 async function showAdminUI() {
@@ -224,6 +221,10 @@ function registerEventListeners() {
 
     ['closeModal', 'closeModalBtn'].forEach(id => document.getElementById(id).addEventListener('click', closeModal));
     document.querySelector('#pdfModal .modal-overlay').addEventListener('click', closeModal);
+    document.getElementById('editFromModalBtn').addEventListener('click', () => {
+        closeModal();
+        if (state.currentModalId) openEditModal(state.currentModalId);
+    });
 
     // 등록 모달
     document.getElementById('uploadBtn').addEventListener('click', openUploadModal);
@@ -397,6 +398,7 @@ function updateStats() {
 function openPDFModal(id) {
     const m = state.allMSDS.find(x => x.id === id);
     if (!m) return;
+    state.currentModalId = id;
 
     document.getElementById('modalTitle').textContent = m.product_name;
     document.getElementById('msdsInfo').innerHTML = `
