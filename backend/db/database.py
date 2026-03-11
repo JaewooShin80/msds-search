@@ -1,29 +1,39 @@
-import sqlite3
 import os
+import psycopg2
+import psycopg2.extras
 from pathlib import Path
 from dotenv import load_dotenv
 
 load_dotenv()
 
-DB_PATH = Path(__file__).parent.parent / os.getenv("DB_PATH", "./db/msds.db")
-DB_PATH.parent.mkdir(parents=True, exist_ok=True)
-
+DATABASE_URL = os.getenv("DATABASE_URL")
 SCHEMA_PATH = Path(__file__).parent / "schema.sql"
 
 
-def get_connection() -> sqlite3.Connection:
-    """요청마다 새 연결 반환 (FastAPI Depends 용)"""
-    conn = sqlite3.connect(str(DB_PATH), check_same_thread=False)
-    conn.row_factory = sqlite3.Row   # dict-like 접근
-    conn.execute("PRAGMA journal_mode=WAL")
-    conn.execute("PRAGMA foreign_keys=ON")
-    return conn
+def get_db_connection() -> psycopg2.extensions.connection:
+    """직접 연결 생성 (스크립트/init_db 용)"""
+    return psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+
+
+def get_connection():
+    """FastAPI Depends 용 generator"""
+    conn = get_db_connection()
+    try:
+        yield conn
+    finally:
+        if not conn.closed:
+            conn.close()
 
 
 def init_db():
     """앱 시작 시 스키마 초기화"""
-    conn = get_connection()
+    conn = get_db_connection()
+    cur = conn.cursor()
     schema = SCHEMA_PATH.read_text(encoding="utf-8")
-    conn.executescript(schema)
+    for stmt in schema.split(";"):
+        stmt = stmt.strip()
+        if stmt:
+            cur.execute(stmt)
     conn.commit()
+    cur.close()
     conn.close()

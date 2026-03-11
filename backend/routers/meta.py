@@ -8,24 +8,23 @@ HAZARD_LEVELS = ["위험", "경고", "주의"]
 
 @router.get("/stats")
 def get_stats(conn=Depends(get_connection)):
-    total    = conn.execute("SELECT COUNT(*) FROM msds").fetchone()[0]
-    cat_count = conn.execute("SELECT COUNT(*) FROM categories").fetchone()[0]
+    cur = conn.cursor()
+    cur.execute("SELECT COUNT(*) FROM msds")
+    total = cur.fetchone()["count"]
+    cur.execute("SELECT COUNT(*) FROM categories")
+    cat_count = cur.fetchone()["count"]
     conn.close()
     return {"total": total, "categoryCount": cat_count}
 
 
 @router.get("/categories")
 def get_categories(conn=Depends(get_connection)):
-    # DB에 있는 건수 맵
-    rows = conn.execute(
-        "SELECT category AS name, COUNT(*) AS count FROM msds GROUP BY category"
-    ).fetchall()
-    count_map = {r["name"]: r["count"] for r in rows}
+    cur = conn.cursor()
+    cur.execute("SELECT category AS name, COUNT(*) AS count FROM msds GROUP BY category")
+    count_map = {r["name"]: r["count"] for r in cur.fetchall()}
 
-    # 전체 카테고리 순서 유지
-    all_cats = conn.execute(
-        "SELECT name FROM categories ORDER BY id"
-    ).fetchall()
+    cur.execute("SELECT name FROM categories ORDER BY id")
+    all_cats = cur.fetchall()
     conn.close()
 
     return [{"name": c["name"], "count": count_map.get(c["name"], 0)} for c in all_cats]
@@ -33,33 +32,39 @@ def get_categories(conn=Depends(get_connection)):
 
 @router.get("/hazard-levels")
 def get_hazard_levels(conn=Depends(get_connection)):
-    rows = conn.execute(
+    cur = conn.cursor()
+    cur.execute(
         "SELECT hazard_level AS name, COUNT(*) AS count FROM msds GROUP BY hazard_level"
-    ).fetchall()
-    count_map = {r["name"]: r["count"] for r in rows}
+    )
+    count_map = {r["name"]: r["count"] for r in cur.fetchall()}
     conn.close()
     return [{"name": h, "count": count_map.get(h, 0)} for h in HAZARD_LEVELS]
 
 
 @router.get("/manufacturers")
 def get_manufacturers(conn=Depends(get_connection)):
-    rows = conn.execute(
+    cur = conn.cursor()
+    cur.execute(
         "SELECT manufacturer AS name, COUNT(*) AS count FROM msds GROUP BY manufacturer ORDER BY manufacturer"
-    ).fetchall()
+    )
+    rows = cur.fetchall()
     conn.close()
     return [dict(r) for r in rows]
 
 
 @router.get("/dashboard")
 def get_dashboard(conn=Depends(get_connection)):
-    total = conn.execute("SELECT COUNT(*) FROM msds").fetchone()[0]
+    cur = conn.cursor()
 
-    by_hazard = conn.execute(
+    cur.execute("SELECT COUNT(*) FROM msds")
+    total = cur.fetchone()["count"]
+
+    cur.execute(
         "SELECT hazard_level AS name, COUNT(*) AS count FROM msds GROUP BY hazard_level"
-    ).fetchall()
-    hazard_map = {r["name"]: r["count"] for r in by_hazard}
+    )
+    hazard_map = {r["name"]: r["count"] for r in cur.fetchall()}
 
-    by_category = conn.execute(
+    cur.execute(
         """
         SELECT c.name, COALESCE(m.count, 0) AS count
         FROM categories c
@@ -68,25 +73,29 @@ def get_dashboard(conn=Depends(get_connection)):
         ) m ON c.name = m.category
         ORDER BY count DESC
         """
-    ).fetchall()
+    )
+    by_category = cur.fetchall()
 
-    by_manufacturer = conn.execute(
+    cur.execute(
         "SELECT manufacturer AS name, COUNT(*) AS count FROM msds GROUP BY manufacturer ORDER BY count DESC LIMIT 10"
-    ).fetchall()
+    )
+    by_manufacturer = cur.fetchall()
 
-    recent = conn.execute(
+    cur.execute(
         "SELECT id, product_name, category, hazard_level, created_at FROM msds ORDER BY created_at DESC LIMIT 5"
-    ).fetchall()
+    )
+    recent = cur.fetchall()
 
-    monthly = conn.execute(
+    cur.execute(
         """
-        SELECT strftime('%Y-%m', created_at) AS month, COUNT(*) AS count
+        SELECT TO_CHAR(created_at, 'YYYY-MM') AS month, COUNT(*) AS count
         FROM msds
         GROUP BY month
         ORDER BY month DESC
         LIMIT 12
         """
-    ).fetchall()
+    )
+    monthly = cur.fetchall()
 
     conn.close()
     return {
@@ -108,8 +117,10 @@ def get_ai_status(conn=Depends(get_connection)):
     """AI 분석 가능 여부 + 미분석 건수 반환"""
     import os
     has_key = bool(os.environ.get("ANTHROPIC_API_KEY", "").strip())
-    pending = conn.execute(
+    cur = conn.cursor()
+    cur.execute(
         "SELECT COUNT(*) FROM msds WHERE ai_analyzed = 0 AND (pdf_path IS NOT NULL OR pdf_url IS NOT NULL)"
-    ).fetchone()[0]
+    )
+    pending = cur.fetchone()["count"]
     conn.close()
     return {"ai_available": has_key, "pending_count": pending}

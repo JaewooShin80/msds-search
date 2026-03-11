@@ -15,7 +15,7 @@ if hasattr(sys.stderr, "reconfigure"):
 # 프로젝트 루트를 경로에 추가
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from db.database import get_connection, init_db
+from db.database import get_db_connection, init_db
 
 CATEGORIES = [
     "용접재료", "절단/연마", "윤활유/그리스", "연료(유류)", "시멘트류",
@@ -139,31 +139,40 @@ MSDS_DATA = [
 
 def run():
     init_db()
-    conn = get_connection()
+    conn = get_db_connection()
+    cur = conn.cursor()
 
     # 카테고리 삽입
     for name in CATEGORIES:
-        conn.execute("INSERT OR IGNORE INTO categories (name) VALUES (?)", (name,))
+        cur.execute(
+            "INSERT INTO categories (name) VALUES (%s) ON CONFLICT DO NOTHING",
+            (name,),
+        )
 
     # MSDS 중복 방지
-    count = conn.execute("SELECT COUNT(*) FROM msds").fetchone()[0]
+    cur.execute("SELECT COUNT(*) FROM msds")
+    count = cur.fetchone()["count"]
     if count > 0:
         print(f"이미 {count}개의 데이터가 존재합니다. seed를 건너뜁니다.")
     else:
-        conn.executemany(
-            """
-            INSERT INTO msds
-                (product_name, manufacturer, category, hazard_level,
-                 cas_number, revision_date, pdf_url, description, keywords)
-            VALUES
-                (:product_name, :manufacturer, :category, :hazard_level,
-                 :cas_number, :revision_date, :pdf_url, :description, :keywords)
-            """,
-            MSDS_DATA,
-        )
+        for item in MSDS_DATA:
+            cur.execute(
+                """
+                INSERT INTO msds
+                    (product_name, manufacturer, category, hazard_level,
+                     cas_number, revision_date, pdf_url, description, keywords)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                """,
+                (
+                    item["product_name"], item["manufacturer"], item["category"],
+                    item["hazard_level"], item["cas_number"], item["revision_date"],
+                    item["pdf_url"], item["description"], item["keywords"],
+                ),
+            )
         print(f"{len(MSDS_DATA)}개의 MSDS 데이터 삽입 완료")
 
     conn.commit()
+    cur.close()
     conn.close()
     print(f"{len(CATEGORIES)}개의 카테고리 삽입 완료")
     print("Seed 완료")
