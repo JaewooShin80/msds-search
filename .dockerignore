@@ -1,0 +1,50 @@
+# Python
+__pycache__/
+*.py[cod]
+*.pyo
+*.pyd
+.Python
+*.egg-info/
+dist/
+build/
+.eggs/
+
+# Virtual environments
+venv/
+.venv/
+env/
+
+# Local DB & uploads
+backend/db/*.db
+backend/db/*.db-shm
+backend/db/*.db-wal
+backend/uploads/
+
+# Environment & secrets
+.env
+*.env
+.env.*
+credentials.json
+service-account*.json
+
+# IDE & OS
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+*.swp
+*.swo
+
+# Git
+.git/
+.gitignore
+
+# Test & CI artifacts
+.pytest_cache/
+htmlcov/
+.coverage
+*.log
+
+# Claude
+.claude/
+CLAUDE.md

@@ -4,6 +4,17 @@
 
 const BASE = '/api';
 
+/** XSS 방지용 HTML 이스케이프 */
+function escapeHtml(str) {
+    if (str == null) return '';
+    return String(str)
+        .replace(/&/g, '&amp;')
+        .replace(/</g, '&lt;')
+        .replace(/>/g, '&gt;')
+        .replace(/"/g, '&quot;')
+        .replace(/'/g, '&#039;');
+}
+
 function getAdminToken() {
     return sessionStorage.getItem('adminToken') || '';
 }

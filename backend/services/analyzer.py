@@ -165,10 +165,19 @@ def text_to_html(raw: str) -> str:
 
 # ---------- Claude AI 분석 ----------
 
-def _call_claude(text: str) -> dict:
-    import anthropic  # 런타임에만 import (API 키 없을 때 오류 방지)
+_anthropic_client = None
 
-    client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+
+def _get_anthropic_client():
+    global _anthropic_client
+    if _anthropic_client is None:
+        import anthropic  # 런타임에만 import (API 키 없을 때 오류 방지)
+        _anthropic_client = anthropic.Anthropic(api_key=os.environ["ANTHROPIC_API_KEY"])
+    return _anthropic_client
+
+
+def _call_claude(text: str) -> dict:
+    client = _get_anthropic_client()
 
     prompt = textwrap.dedent(f"""
         다음은 MSDS(물질안전보건자료) 문서에서 추출한 텍스트입니다.

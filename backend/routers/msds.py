@@ -1,3 +1,4 @@
+import asyncio
 import json
 import os
 import re
@@ -22,6 +23,8 @@ router = APIRouter()
 UPLOAD_DIR = Path(__file__).parent.parent / os.getenv("UPLOAD_DIR", "./uploads/pdfs")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
+MAX_PDF_SIZE = 50 * 1024 * 1024  # 50MB
+
 
 # ---------- 헬퍼 ----------
 
@@ -29,6 +32,14 @@ def row_to_dict(row) -> dict:
     d = dict(row)
     d["keywords"] = json.loads(d.get("keywords") or "[]")
     return d
+
+
+def _validate_pdf(pdf_bytes: bytes) -> None:
+    """H4: magic bytes 검증 + 크기 제한 (50MB)"""
+    if len(pdf_bytes) > MAX_PDF_SIZE:
+        raise HTTPException(status_code=413, detail="파일 크기가 50MB를 초과합니다.")
+    if not pdf_bytes.startswith(b"%PDF"):
+        raise HTTPException(status_code=400, detail="유효한 PDF 파일이 아닙니다.")
 
 
 def _save_pdf_to_gcs(pdf_bytes: bytes, original_filename: str) -> str:
@@ -61,8 +72,8 @@ async def _download_from_gdrive(url: str) -> bytes:
     async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
         r = await client.get(download_url)
 
-        # 대용량 파일: 확인 페이지 우회
-        if r.status_code == 200 and b"virus scan warning" in r.content.lower() or b"confirm=" in r.content:
+        # H2: 연산자 우선순위 버그 수정 — 괄호 추가
+        if r.status_code == 200 and (b"virus scan warning" in r.content.lower() or b"confirm=" in r.content):
             confirm_match = re.search(r'confirm=([0-9A-Za-z_-]+)', r.text)
             if confirm_match:
                 confirmed_url = f"{download_url}&confirm={confirm_match.group(1)}"
@@ -82,29 +93,20 @@ async def _download_from_gdrive(url: str) -> bytes:
 
 @router.post("/analyze", dependencies=[Depends(require_admin)])
 async def analyze_pdf(pdf: UploadFile = File(...)):
-    """
-    PDF를 업로드하면 텍스트를 추출하고 AI(또는 수동 입력용 빈 폼)를 반환합니다.
-
-    반환:
-      mode        : "ai" | "manual"
-      fields      : 폼 자동 채우기용 필드 (mode=manual 이면 빈 값)
-      content_html: HTML 변환 내용
-      extracted   : 원문 텍스트 (수동 입력 시 참조용)
-    """
     if pdf.content_type != "application/pdf":
         raise HTTPException(status_code=400, detail="PDF 파일만 업로드 가능합니다.")
     pdf_bytes = await pdf.read()
-    result = analyze(pdf_bytes)
-    # extracted는 용량이 크므로 앞 3000자만 반환 (참조용)
+    _validate_pdf(pdf_bytes)                              # H4
+    result = await asyncio.to_thread(analyze, pdf_bytes)  # H6
     result["extracted_preview"] = result.pop("extracted", "")[:3000]
     return result
 
 
 @router.post("/analyze-gdrive", dependencies=[Depends(require_admin)])
 async def analyze_gdrive(gdrive_url: str = Form(...)):
-    """Google Drive URL에서 PDF를 다운로드하여 분석"""
     pdf_bytes = await _download_from_gdrive(gdrive_url)
-    result = analyze(pdf_bytes)
+    _validate_pdf(pdf_bytes)                              # H4
+    result = await asyncio.to_thread(analyze, pdf_bytes)  # H6
     result["extracted_preview"] = result.pop("extracted", "")[:3000]
     return result
 
@@ -181,7 +183,7 @@ async def download(msds_id: int, conn=Depends(get_connection)):
 
     filename_header = f"attachment; filename*=UTF-8''{quote(row['product_name'])}.pdf"
 
-    # 1) GCS 우선 시도 (pdf_path가 있으면 항상 GCS에서 먼저 찾기)
+    # 1) GCS 우선 시도
     if row["pdf_path"]:
         try:
             data = gcs_download(row["pdf_path"])
@@ -191,7 +193,7 @@ async def download(msds_id: int, conn=Depends(get_connection)):
                 headers={"Content-Disposition": filename_header},
             )
         except Exception:
-            pass  # GCS 실패 시 로컬 파일 시도
+            pass
 
     # 2) 로컬 파일 (기존 호환)
     if row["pdf_path"]:
@@ -203,9 +205,9 @@ async def download(msds_id: int, conn=Depends(get_connection)):
                 headers={"Content-Disposition": filename_header},
             )
 
-    # 3) 외부 URL
+    # 3) 외부 URL — H3: verify=False 제거
     if row["pdf_url"]:
-        async with httpx.AsyncClient(timeout=30, verify=False) as client:
+        async with httpx.AsyncClient(timeout=30) as client:
             r = await client.get(row["pdf_url"])
         if r.status_code != 200:
             raise HTTPException(status_code=502, detail="원본 PDF를 가져올 수 없습니다.")
@@ -240,18 +242,23 @@ async def create(
     pdf_path = None
     if pdf and pdf.filename:
         pdf_bytes = await pdf.read()
+        _validate_pdf(pdf_bytes)                                      # H4
         if not content_html:
-            result = analyze(pdf_bytes)
+            result = await asyncio.to_thread(analyze, pdf_bytes)      # H6
             content_html = result.get("content_html")
         pdf_path = _save_pdf_to_gcs(pdf_bytes, pdf.filename)
     elif gdrive_url:
         pdf_bytes = await _download_from_gdrive(gdrive_url)
+        _validate_pdf(pdf_bytes)                                      # H4
         if not content_html:
-            result = analyze(pdf_bytes)
+            result = await asyncio.to_thread(analyze, pdf_bytes)      # H6
             content_html = result.get("content_html")
         pdf_path = _save_pdf_to_gcs(pdf_bytes, "gdrive.pdf")
 
-    kw = json.dumps(json.loads(keywords) if keywords else [])
+    try:
+        kw = json.dumps(json.loads(keywords) if keywords else [])
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=422, detail="keywords는 유효한 JSON 배열이어야 합니다.")
 
     cur = conn.cursor()
     cur.execute(
@@ -306,18 +313,23 @@ async def update(
 
     if pdf and pdf.filename:
         pdf_bytes = await pdf.read()
+        _validate_pdf(pdf_bytes)                                      # H4
         if not content_html:
-            result = analyze(pdf_bytes)
+            result = await asyncio.to_thread(analyze, pdf_bytes)      # H6
             content_html = result.get("content_html")
         pdf_path = _save_pdf_to_gcs(pdf_bytes, pdf.filename)
     elif gdrive_url:
         pdf_bytes = await _download_from_gdrive(gdrive_url)
+        _validate_pdf(pdf_bytes)                                      # H4
         if not content_html:
-            result = analyze(pdf_bytes)
+            result = await asyncio.to_thread(analyze, pdf_bytes)      # H6
             content_html = result.get("content_html")
         pdf_path = _save_pdf_to_gcs(pdf_bytes, "gdrive.pdf")
 
-    kw = json.dumps(json.loads(keywords)) if keywords else e["keywords"]
+    try:
+        kw = json.dumps(json.loads(keywords)) if keywords else e["keywords"]
+    except json.JSONDecodeError:
+        raise HTTPException(status_code=422, detail="keywords는 유효한 JSON 배열이어야 합니다.")
 
     cur.execute(
         """
@@ -337,17 +349,17 @@ async def update(
         WHERE id = %s
         """,
         (
-            product_name  or e["product_name"],
-            manufacturer  or e["manufacturer"],
-            category      or e["category"],
-            hazard_level  or e["hazard_level"],
-            cas_number    if cas_number is not None else e["cas_number"],
-            revision_date or e["revision_date"],
+            product_name  if product_name  is not None else e["product_name"],
+            manufacturer  if manufacturer  is not None else e["manufacturer"],
+            category      if category      is not None else e["category"],
+            hazard_level  if hazard_level  is not None else e["hazard_level"],
+            cas_number    if cas_number    is not None else e["cas_number"],
+            revision_date if revision_date is not None else e["revision_date"],
             pdf_path,
-            pdf_url       if pdf_url is not None else e["pdf_url"],
-            description   if description is not None else e["description"],
+            pdf_url       if pdf_url       is not None else e["pdf_url"],
+            description   if description   is not None else e["description"],
             kw,
-            content_html  if content_html is not None else e["content_html"],
+            content_html  if content_html  is not None else e["content_html"],
             msds_id,
         ),
     )
@@ -381,12 +393,6 @@ async def bulk_upload(
     pdfs: List[UploadFile] = File(...),
     conn=Depends(get_connection),
 ):
-    """
-    여러 PDF 파일을 한번에 업로드하여:
-    1. GCS에 저장
-    2. AI로 자동 분석
-    3. DB에 MSDS 등록
-    """
     uploaded = []
     errors = []
     cur = conn.cursor()
@@ -399,17 +405,15 @@ async def bulk_upload(
                 continue
 
             pdf_bytes = await pdf.read()
+            _validate_pdf(pdf_bytes)                                  # H4
 
-            # 1) GCS 업로드
             gcs_path = gcs_upload_pdf(pdf_bytes, filename)
 
-            # 2) AI 분석
-            result = analyze(pdf_bytes)
+            result = await asyncio.to_thread(analyze, pdf_bytes)      # H6
             fields = result.get("fields", {})
             content_html = result.get("content_html", "")
             ai_analyzed = 1 if result.get("mode") == "ai" else 0
 
-            # 3) DB 등록
             kw = json.dumps(fields.get("keywords", []))
             cur.execute(
                 """
@@ -445,11 +449,12 @@ async def bulk_upload(
                 "category": fields.get("category", "기타"),
                 "mode": result.get("mode", "manual"),
             })
+        except HTTPException as e:
+            errors.append({"filename": filename, "error": e.detail})
         except Exception as e:
             errors.append({"filename": filename, "error": str(e)})
 
     conn.close()
-
     return {
         "message": f"{len(uploaded)}개 MSDS 등록 완료",
         "uploaded": uploaded,
@@ -464,14 +469,7 @@ async def import_gcs_folder(
     gcs_prefix: str = Form(...),
     conn=Depends(get_connection),
 ):
-    """
-    GCS 버킷 내 특정 폴더(prefix)의 PDF 파일들을:
-    1. GCS 경로를 그대로 pdf_path로 사용 (재업로드 없음)
-    2. AI로 자동 분석 (제품명, 제조사, 카테고리 등) — 동시 8개 병렬 처리
-    3. DB에 MSDS로 등록 (중복 제외)
-    """
-    import asyncio
-    CONCURRENCY = 8  # 동시 처리 수 (Claude API rate limit 고려)
+    CONCURRENCY = 8
 
     prefix = gcs_prefix.rstrip("/") + "/"
 
@@ -479,12 +477,10 @@ async def import_gcs_folder(
     cur.execute("SELECT pdf_path FROM msds WHERE pdf_path IS NOT NULL")
     existing_paths = set(r["pdf_path"] for r in cur.fetchall())
 
-    # GCS에서 blob 목록 + 바이트 수집 (동기 I/O → thread로 실행)
     blobs = await asyncio.to_thread(
         lambda: list(gcs_iter_prefix_pdfs(prefix))
     )
 
-    # 이미 등록된 항목 분리
     pending = [(b, f, d) for b, f, d in blobs if b not in existing_paths]
     skipped = [{"filename": f} for b, f, d in blobs if b in existing_paths]
 
@@ -511,7 +507,6 @@ async def import_gcs_folder(
 
     results = await asyncio.gather(*[process_one(b, f, d) for b, f, d in pending])
 
-    # DB 등록 (순차)
     for r in results:
         if r.get("error"):
             errors.append({"filename": r["filename"], "error": r["error"]})
@@ -571,12 +566,6 @@ def import_gdrive_folder(
     gdrive_folder_url: str = Form(...),
     conn=Depends(get_connection),
 ):
-    """
-    Google Drive 공유 폴더의 PDF 파일들을:
-    1. GCS에 업로드
-    2. AI로 자동 분석 (제품명, 제조사, 카테고리 등)
-    3. DB에 MSDS로 등록
-    """
     from services.gdrive import extract_folder_id, iter_folder_pdfs
 
     folder_id = extract_folder_id(gdrive_folder_url)
@@ -589,16 +578,13 @@ def import_gdrive_folder(
 
     for filename, pdf_bytes in iter_folder_pdfs(folder_id):
         try:
-            # 1) GCS 업로드
             gcs_path = gcs_upload_pdf(pdf_bytes, filename)
 
-            # 2) AI 분석
-            result = analyze(pdf_bytes)
+            result = analyze(pdf_bytes)  # sync 함수이므로 to_thread 불필요
             fields = result.get("fields", {})
             content_html = result.get("content_html", "")
             ai_analyzed = 1 if result.get("mode") == "ai" else 0
 
-            # 3) DB 등록
             kw = json.dumps(fields.get("keywords", []))
             cur.execute(
                 """
@@ -638,7 +624,6 @@ def import_gdrive_folder(
             errors.append({"filename": filename, "error": str(e)})
 
     conn.close()
-
     return {
         "message": f"{len(uploaded)}개 MSDS 등록 완료",
         "uploaded": uploaded,
@@ -650,15 +635,6 @@ def import_gdrive_folder(
 
 @router.post("/reanalyze-pending", dependencies=[Depends(require_admin)])
 async def reanalyze_pending(conn=Depends(get_connection)):
-    """
-    DB에 등록된 레코드 중 ai_analyzed=0 인 항목을:
-    1. GCS 또는 외부 URL에서 PDF 다운로드
-    2. AI로 전체 필드 재분석 (병렬 처리 CONCURRENCY=8)
-    3. product_name, manufacturer, category, hazard_level,
-       cas_number, revision_date, description, keywords,
-       content_html, ai_analyzed 전부 업데이트
-    """
-    import asyncio
     CONCURRENCY = 8
 
     cur = conn.cursor()
@@ -686,7 +662,8 @@ async def reanalyze_pending(conn=Depends(get_connection)):
                 if pdf_path:
                     pdf_bytes = await asyncio.to_thread(gcs_download, pdf_path)
                 else:
-                    async with httpx.AsyncClient(timeout=60, verify=False) as client:
+                    # H3: verify=False 제거
+                    async with httpx.AsyncClient(timeout=60) as client:
                         r = await client.get(pdf_url)
                     if r.status_code != 200:
                         return {"id": msds_id, "name": name, "error": f"HTTP {r.status_code}"}

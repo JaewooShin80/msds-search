@@ -160,9 +160,11 @@ function initializeFilters(categories, hazardLevels, manufacturers) {
 function createFilterCheckbox(label, count, type) {
     const div = document.createElement('div');
     div.className = 'filter-checkbox';
+    const safeLabel = escapeHtml(label);
+    const safeType  = escapeHtml(type);
     div.innerHTML = `
-        <input type="checkbox" id="${type}-${label}" value="${label}" data-type="${type}">
-        <label for="${type}-${label}">${label}</label>
+        <input type="checkbox" id="${safeType}-${safeLabel}" value="${safeLabel}" data-type="${safeType}">
+        <label for="${safeType}-${safeLabel}">${safeLabel}</label>
         <span class="filter-count">${count}</span>
     `;
     const cb = div.querySelector('input');
@@ -330,19 +332,26 @@ function renderCards() {
     }
     noResults.style.display = 'none';
 
-    container.innerHTML = state.filteredMSDS.map(m => `
+    container.innerHTML = state.filteredMSDS.map(m => {
+        const name   = escapeHtml(m.product_name);
+        const hazard = escapeHtml(m.hazard_level);
+        const mfr    = escapeHtml(m.manufacturer);
+        const date   = escapeHtml(m.revision_date);
+        const cas    = escapeHtml(m.cas_number);
+        const cat    = escapeHtml(m.category);
+        return `
         <div class="msds-card fade-in" data-id="${m.id}">
             <div class="card-header">
-                <h3 class="card-title">${m.product_name}</h3>
-                <span class="hazard-badge ${m.hazard_level}">${m.hazard_level}</span>
+                <h3 class="card-title">${name}</h3>
+                <span class="hazard-badge ${hazard}">${hazard}</span>
             </div>
             <div class="card-body">
                 <div class="card-info">
-                    <div class="info-item"><i class="fas fa-industry"></i><span>${m.manufacturer}</span></div>
-                    <div class="info-item"><i class="fas fa-calendar"></i><span>개정일: ${m.revision_date}</span></div>
-                    ${m.cas_number !== '-' ? `<div class="info-item"><i class="fas fa-flask"></i><span>CAS: ${m.cas_number}</span></div>` : ''}
+                    <div class="info-item"><i class="fas fa-industry"></i><span>${mfr}</span></div>
+                    <div class="info-item"><i class="fas fa-calendar"></i><span>개정일: ${date}</span></div>
+                    ${m.cas_number !== '-' ? `<div class="info-item"><i class="fas fa-flask"></i><span>CAS: ${cas}</span></div>` : ''}
                 </div>
-                <span class="category-badge"><i class="fas fa-tag"></i> ${m.category}</span>
+                <span class="category-badge"><i class="fas fa-tag"></i> ${cat}</span>
             </div>
             <div class="card-footer">
                 <button class="btn btn-primary btn-pdf"><i class="fas fa-file-pdf"></i> 상세보기</button>
@@ -355,7 +364,8 @@ function renderCards() {
                 <button class="btn-delete"><i class="fas fa-trash"></i> 삭제</button>
             </div>
         </div>
-    `).join('');
+        `;
+    }).join('');
 }
 
 function updateStats() {
@@ -372,20 +382,22 @@ function openPDFModal(id) {
     document.getElementById('modalTitle').textContent = m.product_name;
     document.getElementById('msdsInfo').innerHTML = `
         <div class="msds-info-grid">
-            <div class="info-item"><i class="fas fa-industry"></i><strong>제조사:</strong> ${m.manufacturer}</div>
-            <div class="info-item"><i class="fas fa-tag"></i><strong>카테고리:</strong> ${m.category}</div>
+            <div class="info-item"><i class="fas fa-industry"></i><strong>제조사:</strong> ${escapeHtml(m.manufacturer)}</div>
+            <div class="info-item"><i class="fas fa-tag"></i><strong>카테고리:</strong> ${escapeHtml(m.category)}</div>
             <div class="info-item"><i class="fas fa-exclamation-triangle"></i><strong>위험등급:</strong>
-                <span class="hazard-badge ${m.hazard_level}">${m.hazard_level}</span>
+                <span class="hazard-badge ${escapeHtml(m.hazard_level)}">${escapeHtml(m.hazard_level)}</span>
             </div>
-            <div class="info-item"><i class="fas fa-calendar"></i><strong>개정일:</strong> ${m.revision_date}</div>
-            ${m.cas_number !== '-' ? `<div class="info-item"><i class="fas fa-flask"></i><strong>CAS:</strong> ${m.cas_number}</div>` : ''}
+            <div class="info-item"><i class="fas fa-calendar"></i><strong>개정일:</strong> ${escapeHtml(m.revision_date)}</div>
+            ${m.cas_number !== '-' ? `<div class="info-item"><i class="fas fa-flask"></i><strong>CAS:</strong> ${escapeHtml(m.cas_number)}</div>` : ''}
             ${m.ai_analyzed ? '<div class="info-item"><i class="fas fa-robot"></i><strong>분석:</strong> AI 자동 분석</div>' : ''}
         </div>
-        ${m.description ? `<p style="margin-top:10px;"><strong>설명:</strong> ${m.description}</p>` : ''}
+        ${m.description ? `<p style="margin-top:10px;"><strong>설명:</strong> ${escapeHtml(m.description)}</p>` : ''}
     `;
 
     const contentEl = document.getElementById('msdsContentHtml');
-    contentEl.innerHTML = m.content_html || '<p class="no-content">추출된 내용이 없습니다. 원본 PDF 탭을 확인하세요.</p>';
+    contentEl.innerHTML = m.content_html
+        ? DOMPurify.sanitize(m.content_html)
+        : '<p class="no-content">추출된 내용이 없습니다. 원본 PDF 탭을 확인하세요.</p>';
 
     document.getElementById('pdfViewer').src = (m.pdf_path || m.pdf_url) ? api.downloadUrl(m.id) : '';
     document.getElementById('downloadBtn').href = api.downloadUrl(m.id);
@@ -690,13 +702,13 @@ async function startBulkUpload() {
                 const badge = f.mode === 'ai'
                     ? '<span style="color:#10b981;font-size:0.8rem;"><i class="fas fa-robot"></i> AI</span>'
                     : '<span style="color:#94a3b8;font-size:0.8rem;"><i class="fas fa-keyboard"></i> 수동</span>';
-                html += `<li><i class="fas fa-file-pdf" style="color:#dc2626;"></i><span style="flex:1;">${f.product_name||f.filename}</span><span style="color:#64748b;font-size:0.8rem;">${f.category||''}</span>${badge}</li>`;
+                html += `<li><i class="fas fa-file-pdf" style="color:#dc2626;"></i><span style="flex:1;">${escapeHtml(f.product_name||f.filename)}</span><span style="color:#64748b;font-size:0.8rem;">${escapeHtml(f.category||'')}</span>${badge}</li>`;
             });
             html += '</ul>';
         }
         if (result.errors && result.errors.length) {
             html += '<h4 style="color:#dc2626;margin-top:1rem;">실패 목록:</h4><ul class="gdrive-file-list">';
-            result.errors.forEach(f => { html += `<li><i class="fas fa-exclamation-circle" style="color:#dc2626;"></i> ${f.filename}: ${f.error}</li>`; });
+            result.errors.forEach(f => { html += `<li><i class="fas fa-exclamation-circle" style="color:#dc2626;"></i> ${escapeHtml(f.filename)}: ${escapeHtml(f.error)}</li>`; });
             html += '</ul>';
         }
         document.getElementById('bulkResult').innerHTML = html;
@@ -736,7 +748,7 @@ async function handleGCSImport() {
                 const badge = f.mode === 'ai'
                     ? '<span style="color:#10b981;font-size:0.8rem;"><i class="fas fa-robot"></i> AI</span>'
                     : '<span style="color:#94a3b8;font-size:0.8rem;"><i class="fas fa-keyboard"></i> 수동</span>';
-                html += `<li><i class="fas fa-file-pdf" style="color:#dc2626;"></i><span style="flex:1;">${f.product_name||f.filename}</span><span style="color:#64748b;font-size:0.8rem;">${f.category||''}</span>${badge}</li>`;
+                html += `<li><i class="fas fa-file-pdf" style="color:#dc2626;"></i><span style="flex:1;">${escapeHtml(f.product_name||f.filename)}</span><span style="color:#64748b;font-size:0.8rem;">${escapeHtml(f.category||'')}</span>${badge}</li>`;
             });
             html += '</ul>';
         }
@@ -745,7 +757,7 @@ async function handleGCSImport() {
         }
         if (result.errors && result.errors.length) {
             html += '<h4 style="color:#dc2626;margin-top:1rem;">실패 목록:</h4><ul class="gdrive-file-list">';
-            result.errors.forEach(f => { html += `<li><i class="fas fa-exclamation-circle" style="color:#dc2626;"></i> ${f.filename}: ${f.error}</li>`; });
+            result.errors.forEach(f => { html += `<li><i class="fas fa-exclamation-circle" style="color:#dc2626;"></i> ${escapeHtml(f.filename)}: ${escapeHtml(f.error)}</li>`; });
             html += '</ul>';
         }
         document.getElementById('bulkResult').innerHTML = html;

@@ -66,9 +66,7 @@ def exists(gcs_path: str) -> bool:
 def iter_prefix_pdfs(prefix: str):
     """GCS prefix 내 PDF 파일을 순회하며 (blob_name, 파일명, 바이트) 반환"""
     from pathlib import Path as _Path
-    bucket = _get_bucket()
-    blobs = list(_get_client().list_blobs(BUCKET_NAME, prefix=prefix))
-    for blob in blobs:
+    for blob in _get_client().list_blobs(BUCKET_NAME, prefix=prefix):
         if blob.name.lower().endswith(".pdf"):
             data = blob.download_as_bytes()
             yield blob.name, _Path(blob.name).name, data
