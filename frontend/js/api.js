@@ -72,11 +72,6 @@ const api = {
         fd.append('pdf', file);
         return request(`${BASE}/msds/analyze`, { method: 'POST', body: fd });
     },
-    analyzeGDrive(url) {
-        const fd = new FormData();
-        fd.append('gdrive_url', url);
-        return request(`${BASE}/msds/analyze-gdrive`, { method: 'POST', body: fd });
-    },
     createMSDS(formData) {
         return request(`${BASE}/msds`, { method: 'POST', body: formData });
     },
@@ -86,16 +81,6 @@ const api = {
         const fd = new FormData();
         for (const file of files) fd.append('pdfs', file);
         return request(`${BASE}/msds/bulk-upload`, { method: 'POST', body: fd });
-    },
-    importGDriveFolder(url) {
-        const fd = new FormData();
-        fd.append('gdrive_folder_url', url);
-        return request(`${BASE}/msds/import-gdrive-folder`, { method: 'POST', body: fd });
-    },
-    importGCSFolder(prefix) {
-        const fd = new FormData();
-        fd.append('gcs_prefix', prefix);
-        return request(`${BASE}/msds/import-gcs-folder`, { method: 'POST', body: fd });
     },
     reanalyzePending() {
         return request(`${BASE}/msds/reanalyze-pending`, { method: 'POST' });

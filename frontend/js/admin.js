@@ -680,9 +680,9 @@ async function startBulkUpload() {
         document.getElementById('bulkStep3').style.display = 'block';
         btn.style.display = 'none';
 
-        let html = `<div class="gdrive-result-summary"><i class="fas fa-check-circle" style="color:#10b981;font-size:2rem;"></i><h3>${result.message}</h3></div>`;
+        let html = `<div class="bulk-result-summary"><i class="fas fa-check-circle" style="color:#10b981;font-size:2rem;"></i><h3>${result.message}</h3></div>`;
         if (result.uploaded.length) {
-            html += '<ul class="gdrive-file-list">';
+            html += '<ul class="bulk-file-list">';
             result.uploaded.forEach(f => {
                 const badge = f.mode === 'ai'
                     ? '<span style="color:#10b981;font-size:0.8rem;"><i class="fas fa-robot"></i> AI</span>'
@@ -692,7 +692,7 @@ async function startBulkUpload() {
             html += '</ul>';
         }
         if (result.errors && result.errors.length) {
-            html += '<h4 style="color:#dc2626;margin-top:1rem;">실패 목록:</h4><ul class="gdrive-file-list">';
+            html += '<h4 style="color:#dc2626;margin-top:1rem;">실패 목록:</h4><ul class="bulk-file-list">';
             result.errors.forEach(f => { html += `<li><i class="fas fa-exclamation-circle" style="color:#dc2626;"></i> ${escapeHtml(f.filename)}: ${escapeHtml(f.error)}</li>`; });
             html += '</ul>';
         }

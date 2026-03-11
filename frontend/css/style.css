@@ -773,14 +773,6 @@ body {
     /* PDF iframe */
     .pdf-viewer-container iframe { height: 280px; }
 
-    /* GDrive / GCS 입력 행 */
-    .gdrive-input-row {
-        flex-direction: column;
-        align-items: stretch;
-    }
-    .gdrive-input-row .gdrive-icon { display: none; }
-    .gdrive-url-input { width: 100%; }
-    .gdrive-input-row .btn { width: 100%; justify-content: center; }
 }
 
 @media (max-width: 375px) {
@@ -966,56 +958,6 @@ body {
 }
 .analyzing-box i { display: block; margin-bottom: 1rem; }
 
-.upload-divider {
-    display: flex;
-    align-items: center;
-    margin: 1.25rem 0;
-    color: #94a3b8;
-    font-size: 0.9rem;
-}
-.upload-divider::before,
-.upload-divider::after {
-    content: '';
-    flex: 1;
-    height: 1px;
-    background: #e2e8f0;
-}
-.upload-divider span {
-    padding: 0 1rem;
-}
-
-.gdrive-input-wrap {
-    text-align: center;
-}
-.gdrive-input-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-    max-width: 600px;
-    margin: 0 auto;
-}
-.gdrive-icon {
-    font-size: 1.5rem;
-    color: #4285f4;
-}
-.gdrive-url-input {
-    flex: 1;
-    padding: 0.6rem 0.75rem;
-    border: 2px solid #e2e8f0;
-    border-radius: 8px;
-    font-size: 0.9rem;
-    transition: border-color 0.2s;
-}
-.gdrive-url-input:focus {
-    outline: none;
-    border-color: #4285f4;
-}
-.gdrive-hint {
-    display: block;
-    margin-top: 0.5rem;
-    color: #94a3b8;
-    font-size: 0.8rem;
-}
 
 /* 일괄 등록 버튼 */
 .btn-reanalyze {
@@ -1058,46 +1000,25 @@ body {
 }
 .btn-bulk:hover { background: #059669; }
 
-/* Google Drive 폴더 모달 */
 .modal-content--narrow { max-width: 640px; }
 
-.gcs-import-wrap {
-    background: #f0f7ff;
-    border: 1px solid #bfdbfe;
-    border-radius: 8px;
-    padding: 1rem 1.25rem;
-    margin-bottom: 0.5rem;
-}
 
-.gdrive-desc {
-    color: #475569;
-    font-size: 0.9rem;
-    line-height: 1.6;
-    margin-bottom: 1.25rem;
-}
-.gdrive-folder-input-row {
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-.gdrive-folder-input-row .gdrive-url-input { flex: 1; }
-
-.gdrive-result-summary {
+.bulk-result-summary {
     text-align: center;
     padding: 1rem 0;
 }
-.gdrive-result-summary h3 {
+.bulk-result-summary h3 {
     margin-top: 0.75rem;
     color: #1e3a8a;
 }
-.gdrive-file-list {
+.bulk-file-list {
     list-style: none;
     padding: 0;
     margin: 0.75rem 0 0;
     max-height: 300px;
     overflow-y: auto;
 }
-.gdrive-file-list li {
+.bulk-file-list li {
     padding: 0.4rem 0.5rem;
     border-bottom: 1px solid #f1f5f9;
     font-size: 0.88rem;
