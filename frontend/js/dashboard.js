@@ -19,7 +19,7 @@ function renderSummary(data) {
     document.getElementById('dTotal').textContent   = data.total;
     document.getElementById('dDanger').textContent  = data.by_hazard['위험'];
     document.getElementById('dWarning').textContent = data.by_hazard['경고'];
-    document.getElementById('dCaution').textContent = data.by_hazard['주의'];
+    document.getElementById('dCaution').textContent = data.by_hazard['해당없음'];
 }
 
 function renderCategoryChart(byCategory) {
@@ -49,9 +49,9 @@ function renderHazardChart(byHazard) {
     new Chart(document.getElementById('hazardChart'), {
         type: 'doughnut',
         data: {
-            labels: ['위험', '경고', '주의'],
+            labels: ['위험', '경고', '해당없음'],
             datasets: [{
-                data: [byHazard['위험'], byHazard['경고'], byHazard['주의']],
+                data: [byHazard['위험'], byHazard['경고'], byHazard['해당없음']],
                 backgroundColor: ['#dc2626', '#f59e0b', '#10b981'],
             }],
         },

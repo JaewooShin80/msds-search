@@ -48,7 +48,7 @@
             <div class="search-box">
                 <i class="fas fa-search search-icon"></i>
                 <input type="text" id="searchInput" class="search-input"
-                    placeholder="제품명, 제조사, CAS 번호로 검색..." autocomplete="off">
+                    placeholder="제품명, 제조사로 검색..." autocomplete="off">
                 <button class="clear-search" id="clearSearch" style="display: none;">
                     <i class="fas fa-times"></i>
                 </button>
@@ -136,15 +136,15 @@
                     </button>
                 </div>
 
-                <!-- 내용 탭: HTML 렌더링 -->
-                <div class="tab-pane active" id="tabContent">
-                    <div class="msds-content-html" id="msdsContentHtml"></div>
-                </div>
-
-                <!-- 원본 PDF 탭: iframe -->
-                <div class="tab-pane" id="tabPdf" style="display:none;">
-                    <div class="pdf-viewer-container">
-                        <iframe id="pdfViewer" frameborder="0"></iframe>
+                <!-- 내용 탭 + PDF 탭 래퍼 (PC: 좌우 분할, 모바일: 탭 전환) -->
+                <div class="modal-viewer-area">
+                    <div class="tab-pane active" id="tabContent">
+                        <div class="msds-content-html" id="msdsContentHtml"></div>
+                    </div>
+                    <div class="tab-pane" id="tabPdf" style="display:none;">
+                        <div class="pdf-viewer-container">
+                            <iframe id="pdfViewer" frameborder="0"></iframe>
+                        </div>
                     </div>
                 </div>
             </div>

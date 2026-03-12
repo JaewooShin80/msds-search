@@ -29,7 +29,6 @@ MSDS_DATA = [
         "manufacturer": "조선선재",
         "category": "용접재료",
         "hazard_level": "위험",
-        "cas_number": "-",
         "revision_date": "2023-01-15",
         "pdf_url": "https://www.genspark.ai/api/files/s/y5boIoQM",
         "description": "플럭스 코어드 와이어",
@@ -40,7 +39,6 @@ MSDS_DATA = [
         "manufacturer": "조선선재",
         "category": "용접재료",
         "hazard_level": "위험",
-        "cas_number": "-",
         "revision_date": "2023-02-10",
         "pdf_url": "https://www.genspark.ai/api/files/s/WzO9F6O3",
         "description": "피복아크 용접봉",
@@ -51,7 +49,6 @@ MSDS_DATA = [
         "manufacturer": "모빌코리아",
         "category": "윤활유/그리스",
         "hazard_level": "경고",
-        "cas_number": "-",
         "revision_date": "2023-03-20",
         "pdf_url": "https://www.genspark.ai/api/files/s/ifxjUq4k",
         "description": "유압유",
@@ -62,7 +59,6 @@ MSDS_DATA = [
         "manufacturer": "Komatsu Ltd.",
         "category": "윤활유/그리스",
         "hazard_level": "경고",
-        "cas_number": "-",
         "revision_date": "2023-04-15",
         "pdf_url": "https://www.genspark.ai/api/files/s/lHCX7xje",
         "description": "리튬 EP 그리스",
@@ -73,7 +69,6 @@ MSDS_DATA = [
         "manufacturer": "한일루켐(주)",
         "category": "윤활유/그리스",
         "hazard_level": "경고",
-        "cas_number": "-",
         "revision_date": "2022-09-05",
         "pdf_url": "https://www.genspark.ai/api/files/s/m7Y5YfJ0",
         "description": "윤활 그리스",
@@ -84,7 +79,6 @@ MSDS_DATA = [
         "manufacturer": "현대오일뱅크",
         "category": "윤활유/그리스",
         "hazard_level": "경고",
-        "cas_number": "-",
         "revision_date": "2023-05-10",
         "pdf_url": "https://www.genspark.ai/api/files/s/gkTX3cA3",
         "description": "윤활 그리스",
@@ -95,7 +89,6 @@ MSDS_DATA = [
         "manufacturer": "영남씨앤씨",
         "category": "콘크리트혼화제",
         "hazard_level": "경고",
-        "cas_number": "-",
         "revision_date": "2023-06-01",
         "pdf_url": "https://www.genspark.ai/api/files/s/XMMFZdZ0",
         "description": "폴리카르복실산계 고성능AE감수제 (표준형, 지연형)",
@@ -106,7 +99,6 @@ MSDS_DATA = [
         "manufacturer": "대한시멘트",
         "category": "시멘트류",
         "hazard_level": "위험",
-        "cas_number": "-",
         "revision_date": "2023-07-12",
         "pdf_url": "https://www.genspark.ai/api/files/s/W3WDCC5U",
         "description": "고로슬래그시멘트 2종",
@@ -117,7 +109,6 @@ MSDS_DATA = [
         "manufacturer": "대한시멘트",
         "category": "시멘트류",
         "hazard_level": "위험",
-        "cas_number": "-",
         "revision_date": "2023-08-20",
         "pdf_url": "https://www.genspark.ai/api/files/s/9Wx1Rlch",
         "description": "플라이애시 시멘트",
@@ -128,7 +119,6 @@ MSDS_DATA = [
         "manufacturer": "고성레미콘(주) 동해지점",
         "category": "시멘트류",
         "hazard_level": "위험",
-        "cas_number": "-",
         "revision_date": "2023-09-15",
         "pdf_url": "https://www.genspark.ai/api/files/s/BZCnFqO5",
         "description": "레디믹스트 콘크리트",
@@ -160,12 +150,12 @@ def run():
                 """
                 INSERT INTO msds
                     (product_name, manufacturer, category, hazard_level,
-                     cas_number, revision_date, pdf_url, description, keywords)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s)
+                     revision_date, pdf_url, description, keywords)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s)
                 """,
                 (
                     item["product_name"], item["manufacturer"], item["category"],
-                    item["hazard_level"], item["cas_number"], item["revision_date"],
+                    item["hazard_level"], item["revision_date"],
                     item["pdf_url"], item["description"], item["keywords"],
                 ),
             )

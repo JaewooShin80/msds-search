@@ -129,7 +129,6 @@ def main():
                 manufacturer  = fields.get("manufacturer")  or manufacturer
                 category      = fields.get("category")      or category
                 hazard_level  = fields.get("hazard_level")  or "경고"
-                cas_number    = fields.get("cas_number")    or "-"
                 revision_date = fields.get("revision_date") or str(date.today())
                 description   = fields.get("description")  or ""
                 keywords      = json.dumps(fields.get("keywords") or [], ensure_ascii=False)
@@ -138,7 +137,6 @@ def main():
                 content_html = text_to_html(text)
                 ai_analyzed  = 0
                 hazard_level = "경고"
-                cas_number   = "-"
                 revision_date = str(date.today())
                 description  = ""
                 keywords     = "[]"
@@ -147,12 +145,12 @@ def main():
                 """
                 INSERT INTO msds
                     (product_name, manufacturer, category, hazard_level,
-                     cas_number, revision_date, pdf_path, pdf_url,
+                     revision_date, pdf_path, pdf_url,
                      description, keywords, content_html, ai_analyzed)
-                VALUES (?, ?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)
+                VALUES (?, ?, ?, ?, ?, ?, NULL, ?, ?, ?, ?)
                 """,
                 (product_name, manufacturer, category, hazard_level,
-                 cas_number, revision_date, new_filename,
+                 revision_date, new_filename,
                  description, keywords, content_html, ai_analyzed),
             )
             conn.commit()

@@ -3,7 +3,7 @@ from db.database import get_connection
 
 router = APIRouter()
 
-HAZARD_LEVELS = ["위험", "경고", "주의"]
+HAZARD_LEVELS = ["위험", "경고", "해당없음"]
 
 
 @router.get("/stats")
@@ -103,7 +103,7 @@ def get_dashboard(conn=Depends(get_connection)):
         "by_hazard": {
             "위험": hazard_map.get("위험", 0),
             "경고": hazard_map.get("경고", 0),
-            "주의": hazard_map.get("주의", 0),
+            "해당없음": hazard_map.get("해당없음", 0),
         },
         "by_category": [dict(r) for r in by_category],
         "by_manufacturer": [dict(r) for r in by_manufacturer],

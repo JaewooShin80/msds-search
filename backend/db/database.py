@@ -25,6 +25,25 @@ def get_connection():
             conn.close()
 
 
+def _migrate(cur):
+    """idempotent 마이그레이션: 주의→해당없음, cas_number 컬럼 드롭"""
+    # CHECK constraint 교체 (이미 변경돼 있으면 스킵)
+    cur.execute("""
+        SELECT constraint_name FROM information_schema.table_constraints
+        WHERE table_name='msds' AND constraint_type='CHECK'
+          AND constraint_name='msds_hazard_level_check'
+    """)
+    if cur.fetchone():
+        cur.execute("ALTER TABLE msds DROP CONSTRAINT msds_hazard_level_check")
+        cur.execute("""ALTER TABLE msds
+            ADD CONSTRAINT msds_hazard_level_check
+            CHECK (hazard_level IN ('위험', '경고', '해당없음'))""")
+    # 기존 레코드 "주의" → "해당없음"
+    cur.execute("UPDATE msds SET hazard_level='해당없음' WHERE hazard_level='주의'")
+    # cas_number 컬럼 드롭
+    cur.execute("ALTER TABLE msds DROP COLUMN IF EXISTS cas_number")
+
+
 def init_db():
     """앱 시작 시 스키마 초기화"""
     conn = get_db_connection()
@@ -34,6 +53,7 @@ def init_db():
         stmt = stmt.strip()
         if stmt:
             cur.execute(stmt)
+    _migrate(cur)
     conn.commit()
     cur.close()
     conn.close()

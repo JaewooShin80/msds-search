@@ -126,9 +126,9 @@ def get_all(
         like = f"%{q}%"
         sql += """
             AND (product_name LIKE %s OR manufacturer LIKE %s
-                 OR cas_number LIKE %s OR description LIKE %s OR keywords LIKE %s)
+                 OR description LIKE %s OR keywords LIKE %s)
         """
-        params.extend([like, like, like, like, like])
+        params.extend([like, like, like, like])
 
     if category:
         cats = [c.strip() for c in category.split(",") if c.strip()]
@@ -227,7 +227,6 @@ async def create(
     category:      str  = Form(...),
     hazard_level:  str  = Form(...),
     revision_date: str  = Form(...),
-    cas_number:    str  = Form("-"),
     pdf_url:       Optional[str] = Form(None),
     gdrive_url:    Optional[str] = Form(None),
     description:   Optional[str] = Form(None),
@@ -263,13 +262,13 @@ async def create(
         """
         INSERT INTO msds
             (product_name, manufacturer, category, hazard_level,
-             cas_number, revision_date, pdf_path, pdf_url,
+             revision_date, pdf_path, pdf_url,
              description, keywords, content_html, ai_analyzed)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
         RETURNING id
         """,
         (product_name, manufacturer, category, hazard_level,
-         cas_number, revision_date, pdf_path, pdf_url,
+         revision_date, pdf_path, pdf_url,
          description, kw, content_html, ai_analyzed),
     )
     new_id = cur.fetchone()["id"]
@@ -290,7 +289,6 @@ async def update(
     category:      Optional[str] = Form(None),
     hazard_level:  Optional[str] = Form(None),
     revision_date: Optional[str] = Form(None),
-    cas_number:    Optional[str] = Form(None),
     pdf_url:       Optional[str] = Form(None),
     gdrive_url:    Optional[str] = Form(None),
     description:   Optional[str] = Form(None),
@@ -336,7 +334,6 @@ async def update(
             manufacturer  = %s,
             category      = %s,
             hazard_level  = %s,
-            cas_number    = %s,
             revision_date = %s,
             pdf_path      = %s,
             pdf_url       = %s,
@@ -351,7 +348,6 @@ async def update(
             manufacturer  if manufacturer  is not None else e["manufacturer"],
             category      if category      is not None else e["category"],
             hazard_level  if hazard_level  is not None else e["hazard_level"],
-            cas_number    if cas_number    is not None else e["cas_number"],
             revision_date if revision_date is not None else e["revision_date"],
             pdf_path,
             pdf_url       if pdf_url       is not None else e["pdf_url"],
@@ -413,9 +409,9 @@ async def bulk_upload(
                 """
                 INSERT INTO msds
                     (product_name, manufacturer, category, hazard_level,
-                     cas_number, revision_date, pdf_path, pdf_url,
+                     revision_date, pdf_path, pdf_url,
                      description, keywords, content_html, ai_analyzed)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (
@@ -423,7 +419,6 @@ async def bulk_upload(
                     fields.get("manufacturer", "-"),
                     fields.get("category", "기타"),
                     fields.get("hazard_level", "경고"),
-                    fields.get("cas_number", "-"),
                     fields.get("revision_date", str(date.today())),
                     gcs_path,
                     None,
@@ -512,9 +507,9 @@ async def import_gcs_folder(
                 """
                 INSERT INTO msds
                     (product_name, manufacturer, category, hazard_level,
-                     cas_number, revision_date, pdf_path, pdf_url,
+                     revision_date, pdf_path, pdf_url,
                      description, keywords, content_html, ai_analyzed)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (
@@ -522,7 +517,6 @@ async def import_gcs_folder(
                     fields.get("manufacturer", "-"),
                     fields.get("category", "기타"),
                     fields.get("hazard_level", "경고"),
-                    fields.get("cas_number", "-"),
                     fields.get("revision_date", str(date.today())),
                     r["blob_name"],
                     None,
@@ -584,9 +578,9 @@ def import_gdrive_folder(
                 """
                 INSERT INTO msds
                     (product_name, manufacturer, category, hazard_level,
-                     cas_number, revision_date, pdf_path, pdf_url,
+                     revision_date, pdf_path, pdf_url,
                      description, keywords, content_html, ai_analyzed)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
                 RETURNING id
                 """,
                 (
@@ -594,7 +588,6 @@ def import_gdrive_folder(
                     fields.get("manufacturer", "-"),
                     fields.get("category", "기타"),
                     fields.get("hazard_level", "경고"),
-                    fields.get("cas_number", "-"),
                     fields.get("revision_date", str(date.today())),
                     gcs_path,
                     None,
@@ -696,7 +689,6 @@ async def reanalyze_pending(conn=Depends(get_connection)):
                     manufacturer  = %s,
                     category      = %s,
                     hazard_level  = %s,
-                    cas_number    = %s,
                     revision_date = %s,
                     description   = %s,
                     keywords      = %s,
@@ -709,7 +701,6 @@ async def reanalyze_pending(conn=Depends(get_connection)):
                     fields.get("manufacturer", "-"),
                     fields.get("category", "기타"),
                     fields.get("hazard_level", "경고"),
-                    fields.get("cas_number", "-"),
                     fields.get("revision_date", str(date.today())),
                     fields.get("description", ""),
                     kw,

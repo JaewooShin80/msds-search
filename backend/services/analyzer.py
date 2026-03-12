@@ -189,8 +189,7 @@ def _call_claude(text: str) -> dict:
           "product_name": "제품명",
           "manufacturer": "제조사명",
           "category": "카테고리 (아래 목록 중 하나)",
-          "hazard_level": "위험 또는 경고 또는 주의",
-          "cas_number": "CAS 번호 (없으면 -)",
+          "hazard_level": "위험 또는 경고 또는 해당없음",
           "revision_date": "YYYY-MM-DD (없으면 오늘 날짜)",
           "description": "제품에 대한 한 줄 설명",
           "keywords": ["키워드1", "키워드2", "키워드3"]
@@ -271,7 +270,6 @@ def _empty_fields() -> dict:
         "manufacturer": "",
         "category": "",
         "hazard_level": "경고",
-        "cas_number": "-",
         "revision_date": str(date.today()),
         "description": "",
         "keywords": [],

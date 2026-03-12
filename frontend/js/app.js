@@ -40,6 +40,13 @@ async function initializeApp() {
     document.getElementById('categoryCount').textContent = stats.categoryCount;
 
     initializeFilters(categories, hazardLevels, manufacturers);
+
+    // 위험등급, 제조사 필터 기본 닫힘
+    ['hazardFilter', 'manufacturerFilter'].forEach(id => {
+        document.getElementById(id).classList.add('collapsed');
+        document.querySelector(`[data-target="${id}"]`).classList.add('active');
+    });
+
     renderCards();
     updateStats();
     registerEventListeners();
@@ -138,9 +145,11 @@ function registerEventListeners() {
         btn.addEventListener('click', function() {
             document.querySelectorAll('.vtab').forEach(b => b.classList.remove('active'));
             this.classList.add('active');
-            const tab = this.dataset.tab;
-            document.getElementById('tabContent').style.display = tab === 'content' ? 'block' : 'none';
-            document.getElementById('tabPdf').style.display    = tab === 'pdf'     ? 'block' : 'none';
+            if (window.innerWidth < 768) {
+                const tab = this.dataset.tab;
+                document.getElementById('tabContent').style.display = tab === 'content' ? 'block' : 'none';
+                document.getElementById('tabPdf').style.display    = tab === 'pdf'     ? 'block' : 'none';
+            }
         });
     });
 
@@ -166,7 +175,7 @@ function handleFilterChange(type, value, checked) {
 function applyFilters() {
     let f = [...state.allMSDS];
     if (state.searchQuery) {
-        f = f.filter(m => [m.product_name, m.manufacturer, m.cas_number, m.description, ...(m.keywords||[])].join(' ').toLowerCase().includes(state.searchQuery));
+        f = f.filter(m => [m.product_name, m.manufacturer, m.description, ...(m.keywords||[])].join(' ').toLowerCase().includes(state.searchQuery));
     }
     if (state.selectedCategories.size)    f = f.filter(m => state.selectedCategories.has(m.category));
     if (state.selectedHazards.size)       f = f.filter(m => state.selectedHazards.has(m.hazard_level));
@@ -185,6 +194,11 @@ function resetFilters() {
     document.getElementById('clearSearch').style.display = 'none';
     document.querySelectorAll('.filter-checkbox input').forEach(cb => { cb.checked = false; });
     document.querySelectorAll('.filter-checkbox').forEach(el => el.classList.remove('active'));
+    // 위험등급, 제조사 필터 닫힘 상태로 복원
+    ['hazardFilter', 'manufacturerFilter'].forEach(id => {
+        document.getElementById(id).classList.add('collapsed');
+        document.querySelector(`[data-target="${id}"]`).classList.add('active');
+    });
     applyFilters();
 }
 
@@ -205,7 +219,6 @@ function renderCards() {
         const hazard  = escapeHtml(m.hazard_level);
         const mfr     = escapeHtml(m.manufacturer);
         const date    = escapeHtml(m.revision_date);
-        const cas     = escapeHtml(m.cas_number);
         const cat     = escapeHtml(m.category);
         return `
         <div class="msds-card fade-in" data-id="${m.id}">
@@ -217,7 +230,6 @@ function renderCards() {
                 <div class="card-info">
                     <div class="info-item"><i class="fas fa-industry"></i><span>${mfr}</span></div>
                     <div class="info-item"><i class="fas fa-calendar"></i><span>개정일: ${date}</span></div>
-                    ${m.cas_number !== '-' ? `<div class="info-item"><i class="fas fa-flask"></i><span>CAS: ${cas}</span></div>` : ''}
                 </div>
                 <span class="category-badge"><i class="fas fa-tag"></i> ${cat}</span>
             </div>
@@ -252,7 +264,6 @@ function openPDFModal(id) {
                 <span class="hazard-badge ${escapeHtml(m.hazard_level)}">${escapeHtml(m.hazard_level)}</span>
             </div>
             <div class="info-item"><i class="fas fa-calendar"></i><strong>개정일:</strong> ${escapeHtml(m.revision_date)}</div>
-            ${m.cas_number !== '-' ? `<div class="info-item"><i class="fas fa-flask"></i><strong>CAS:</strong> ${escapeHtml(m.cas_number)}</div>` : ''}
             ${m.ai_analyzed ? '<div class="info-item"><i class="fas fa-robot"></i><strong>분석:</strong> AI 자동 분석</div>' : ''}
         </div>
         ${m.description ? `<p style="margin-top:10px;"><strong>설명:</strong> ${escapeHtml(m.description)}</p>` : ''}
@@ -267,11 +278,18 @@ function openPDFModal(id) {
     document.getElementById('pdfViewer').src = pdfUrl;
     document.getElementById('downloadBtn').href = api.downloadUrl(m.id);
 
-    // 기본: PDF 뷰어 탭 표시 (원본 PDF 우선)
+    // 탭 초기화 — 반응형 분기
     document.querySelectorAll('.vtab').forEach(b => b.classList.remove('active'));
-    document.querySelector('.vtab[data-tab="pdf"]').classList.add('active');
-    document.getElementById('tabContent').style.display = 'none';
-    document.getElementById('tabPdf').style.display    = 'block';
+    if (window.innerWidth < 768) {
+        // 모바일: PDF 탭만 표시
+        document.querySelector('.vtab[data-tab="pdf"]').classList.add('active');
+        document.getElementById('tabContent').style.display = 'none';
+        document.getElementById('tabPdf').style.display    = 'block';
+    } else {
+        // PC/태블릿: 모두 표시 (CSS가 제어)
+        document.getElementById('tabContent').style.display = '';
+        document.getElementById('tabPdf').style.display    = '';
+    }
 
     document.getElementById('pdfModal').classList.add('active');
     document.body.style.overflow = 'hidden';
