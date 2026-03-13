@@ -40,13 +40,6 @@ async function initializeApp() {
     document.getElementById('categoryCount').textContent = stats.categoryCount;
 
     initializeFilters(categories, hazardLevels, manufacturers);
-
-    // 위험등급, 제조사 필터 기본 닫힘
-    ['hazardFilter', 'manufacturerFilter'].forEach(id => {
-        document.getElementById(id).classList.add('collapsed');
-        document.querySelector(`[data-target="${id}"]`).classList.add('active');
-    });
-
     renderCards();
     updateStats();
     registerEventListeners();
