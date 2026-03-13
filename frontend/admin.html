@@ -66,6 +66,7 @@
             background: transparent; border: 1.5px solid rgba(255,255,255,0.4);
             color: #fff; font-size: 0.85rem; padding: 0.4rem 0.9rem;
             border-radius: 6px; cursor: pointer; transition: background 0.2s;
+            white-space: nowrap; flex-shrink: 0;
         }
         .btn-logout:hover { background: rgba(255,255,255,0.15); }
 
@@ -244,12 +245,9 @@
         </div>
         <div class="modal-body">
             <div class="msds-info" id="msdsInfo"></div>
-            <div class="viewer-tabs">
-                <button class="vtab active" data-tab="content"><i class="fas fa-align-left"></i> 내용 보기</button>
-                <button class="vtab" data-tab="pdf"><i class="fas fa-file-pdf"></i> 원본 PDF</button>
-            </div>
+            <!-- 좌우 분할 뷰어 -->
             <div class="modal-viewer-area">
-                <div class="tab-pane active" id="tabContent">
+                <div class="tab-pane" id="tabContent">
                     <div class="msds-content-html" id="msdsContentHtml"></div>
                 </div>
                 <div class="tab-pane" id="tabPdf">

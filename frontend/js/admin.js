@@ -209,13 +209,6 @@ function registerEventListeners() {
         openPDFModal(id); // 나머지 영역 클릭 시 PDF 모달
     });
 
-    document.querySelectorAll('.vtab').forEach(btn => {
-        btn.addEventListener('click', function() {
-            document.querySelectorAll('.vtab').forEach(b => b.classList.remove('active'));
-            this.classList.add('active');
-        });
-    });
-
     ['closeModal', 'closeModalBtn'].forEach(id => document.getElementById(id).addEventListener('click', closeModal));
     document.querySelector('#pdfModal .modal-overlay').addEventListener('click', closeModal);
     document.getElementById('editFromModalBtn').addEventListener('click', () => {
@@ -421,10 +414,6 @@ function openPDFModal(id) {
 
     document.getElementById('pdfViewer').src = (m.pdf_path || m.pdf_url) ? api.downloadUrl(m.id) : '';
     document.getElementById('downloadBtn').href = api.downloadUrl(m.id);
-
-    // 두 pane 항상 표시 (CSS flex로 나란히 제어)
-    document.getElementById('tabContent').style.display = '';
-    document.getElementById('tabPdf').style.display    = '';
 
     document.getElementById('pdfModal').classList.add('active');
     document.body.style.overflow = 'hidden';

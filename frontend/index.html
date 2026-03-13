@@ -33,7 +33,7 @@
                         <a href="/dashboard.html" class="btn btn-outline">
                             <i class="fas fa-chart-bar"></i> 대시보드
                         </a>
-                        <a href="/admin.html" class="btn btn-outline" style="white-space:nowrap;">
+                        <a href="/admin.html" class="btn btn-outline">
                             <i class="fas fa-lock"></i> 관리자
                         </a>
                     </div>
@@ -126,19 +126,9 @@
             <div class="modal-body">
                 <div class="msds-info" id="msdsInfo"></div>
 
-                <!-- 탭 -->
-                <div class="viewer-tabs">
-                    <button class="vtab active" data-tab="content">
-                        <i class="fas fa-align-left"></i> 내용 보기
-                    </button>
-                    <button class="vtab" data-tab="pdf">
-                        <i class="fas fa-file-pdf"></i> 원본 PDF
-                    </button>
-                </div>
-
-                <!-- 내용 탭 + PDF 탭 래퍼 (PC: 좌우 분할, 모바일: 탭 전환) -->
+                <!-- 좌우 분할 뷰어 -->
                 <div class="modal-viewer-area">
-                    <div class="tab-pane active" id="tabContent">
+                    <div class="tab-pane" id="tabContent">
                         <div class="msds-content-html" id="msdsContentHtml"></div>
                     </div>
                     <div class="tab-pane" id="tabPdf">

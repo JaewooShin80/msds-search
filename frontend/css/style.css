@@ -213,6 +213,7 @@ body {
     font-weight: 500;
     cursor: pointer;
     transition: var(--transition);
+    white-space: nowrap;
 }
 
 .btn-reset:hover {
@@ -490,6 +491,7 @@ body {
     transition: var(--transition);
     text-decoration: none;
     font-family: inherit;
+    white-space: nowrap;
 }
 
 .btn-primary {
@@ -813,7 +815,13 @@ body {
 }
 .header-btns {
     display: flex;
+    align-items: center;
     gap: 0.75rem;
+    flex-shrink: 0;
+}
+.header-btns .btn {
+    flex: none;
+    white-space: nowrap;
 }
 .btn-outline {
     background: transparent;
@@ -826,40 +834,17 @@ body {
     text-decoration: none;
     display: inline-flex;
     align-items: center;
+    justify-content: center;
     gap: 0.4rem;
     transition: background .2s;
+    white-space: nowrap;
+    min-width: 6.5rem;
 }
 .btn-outline:hover { background: rgba(255,255,255,.15); }
 
 /* ===================================================
-   뷰어 탭 (내용 보기 / 원본 PDF)
+   분할 뷰어 (내용 보기 + 원본 PDF 나란히)
 =================================================== */
-.viewer-tabs {
-    display: flex;
-    gap: 0;
-    border-bottom: 2px solid #e2e8f0;
-    margin: 1rem 0 0;
-}
-.vtab {
-    padding: 0.6rem 1.2rem;
-    border: none;
-    background: none;
-    cursor: pointer;
-    font-size: 0.9rem;
-    color: #64748b;
-    border-bottom: 3px solid transparent;
-    margin-bottom: -2px;
-    transition: color .2s, border-color .2s;
-    display: flex;
-    align-items: center;
-    gap: 0.4rem;
-}
-.vtab.active { color: #1e3a8a; border-bottom-color: #3b82f6; font-weight: 600; }
-.tab-pane { padding-top: 1rem; }
-
-/* ===== 분할 뷰어 (항상 나란히) ===== */
-.viewer-tabs { display: none; }
-
 .modal-viewer-area {
     display: flex;
     flex-direction: row;
@@ -905,7 +890,6 @@ body {
    MSDS content_html 렌더링 스타일
 =================================================== */
 .msds-content-html {
-    max-height: 420px;
     overflow-y: auto;
     padding: 1rem 1.25rem;
     background: #f8fafc;
@@ -1016,6 +1000,7 @@ body {
     align-items: center;
     gap: 0.4rem;
     transition: background 0.2s;
+    white-space: nowrap;
 }
 .btn-reanalyze:hover { background: #6d28d9; }
 .btn-reanalyze:disabled { background: #a78bfa; cursor: not-allowed; }
@@ -1041,6 +1026,7 @@ body {
     align-items: center;
     gap: 0.4rem;
     transition: background 0.2s;
+    white-space: nowrap;
 }
 .btn-bulk:hover { background: #059669; }
 
