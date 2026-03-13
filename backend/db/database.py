@@ -27,20 +27,31 @@ def get_connection():
 
 def _migrate(cur):
     """idempotent 마이그레이션: 주의→해당없음, cas_number 컬럼 드롭"""
-    # 1) 데이터 먼저 변환 — constraint 교체 전에 실행해야 ADD CONSTRAINT 성공
+    # 1) 데이터 먼저 변환 (idempotent)
     cur.execute("UPDATE msds SET hazard_level='해당없음' WHERE hazard_level='주의'")
-    # 2) CHECK constraint 교체 (이미 변경돼 있으면 스킵)
+
+    # 2) 구 CHECK constraint 제거 (이미 없으면 스킵)
     cur.execute("""
-        SELECT constraint_name FROM information_schema.table_constraints
+        SELECT 1 FROM information_schema.table_constraints
         WHERE table_name='msds' AND constraint_type='CHECK'
           AND constraint_name='msds_hazard_level_check'
     """)
     if cur.fetchone():
         cur.execute("ALTER TABLE msds DROP CONSTRAINT msds_hazard_level_check")
-        cur.execute("""ALTER TABLE msds
-            ADD CONSTRAINT msds_hazard_level_check
-            CHECK (hazard_level IN ('위험', '경고', '해당없음'))""")
-    # 3) cas_number 컬럼 드롭
+
+    # 3) 새 CHECK constraint 추가 — 다른 이름으로 구분해 중복 추가 방지
+    cur.execute("""
+        SELECT 1 FROM information_schema.table_constraints
+        WHERE table_name='msds' AND constraint_type='CHECK'
+          AND constraint_name='msds_hazard_level_check2'
+    """)
+    if not cur.fetchone():
+        cur.execute("""
+            ALTER TABLE msds ADD CONSTRAINT msds_hazard_level_check2
+            CHECK (hazard_level IN ('위험', '경고', '해당없음'))
+        """)
+
+    # 4) cas_number 컬럼 드롭
     cur.execute("ALTER TABLE msds DROP COLUMN IF EXISTS cas_number")
 
 
