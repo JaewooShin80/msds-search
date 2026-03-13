@@ -27,10 +27,7 @@ def get_connection():
 
 def _migrate(cur):
     """idempotent 마이그레이션: 주의→해당없음, cas_number 컬럼 드롭"""
-    # 1) 데이터 먼저 변환 (idempotent)
-    cur.execute("UPDATE msds SET hazard_level='해당없음' WHERE hazard_level='주의'")
-
-    # 2) 구 CHECK constraint 제거 (이미 없으면 스킵)
+    # 1) 구 CHECK constraint 제거 — UPDATE 전에 먼저 제거해야 '해당없음' 값 허용됨
     cur.execute("""
         SELECT 1 FROM information_schema.table_constraints
         WHERE table_name='msds' AND constraint_type='CHECK'
@@ -39,7 +36,10 @@ def _migrate(cur):
     if cur.fetchone():
         cur.execute("ALTER TABLE msds DROP CONSTRAINT msds_hazard_level_check")
 
-    # 3) 새 CHECK constraint 추가 — 다른 이름으로 구분해 중복 추가 방지
+    # 2) 데이터 변환 (idempotent)
+    cur.execute("UPDATE msds SET hazard_level='해당없음' WHERE hazard_level='주의'")
+
+    # 3) 새 CHECK constraint 추가 — 없을 때만 (중복 방지)
     cur.execute("""
         SELECT 1 FROM information_schema.table_constraints
         WHERE table_name='msds' AND constraint_type='CHECK'
