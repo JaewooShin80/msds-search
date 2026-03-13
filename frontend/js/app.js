@@ -138,11 +138,6 @@ function registerEventListeners() {
         btn.addEventListener('click', function() {
             document.querySelectorAll('.vtab').forEach(b => b.classList.remove('active'));
             this.classList.add('active');
-            if (window.innerWidth < 768) {
-                const tab = this.dataset.tab;
-                document.getElementById('tabContent').style.display = tab === 'content' ? 'block' : 'none';
-                document.getElementById('tabPdf').style.display    = tab === 'pdf'     ? 'block' : 'none';
-            }
         });
     });
 
@@ -271,18 +266,9 @@ function openPDFModal(id) {
     document.getElementById('pdfViewer').src = pdfUrl;
     document.getElementById('downloadBtn').href = api.downloadUrl(m.id);
 
-    // 탭 초기화 — 반응형 분기
-    document.querySelectorAll('.vtab').forEach(b => b.classList.remove('active'));
-    if (window.innerWidth < 768) {
-        // 모바일: PDF 탭만 표시
-        document.querySelector('.vtab[data-tab="pdf"]').classList.add('active');
-        document.getElementById('tabContent').style.display = 'none';
-        document.getElementById('tabPdf').style.display    = 'block';
-    } else {
-        // PC/태블릿: 모두 표시 (CSS가 제어)
-        document.getElementById('tabContent').style.display = '';
-        document.getElementById('tabPdf').style.display    = '';
-    }
+    // 두 pane 항상 표시 (CSS flex로 나란히 제어)
+    document.getElementById('tabContent').style.display = '';
+    document.getElementById('tabPdf').style.display    = '';
 
     document.getElementById('pdfModal').classList.add('active');
     document.body.style.overflow = 'hidden';

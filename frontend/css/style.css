@@ -857,38 +857,47 @@ body {
 .vtab.active { color: #1e3a8a; border-bottom-color: #3b82f6; font-weight: 600; }
 .tab-pane { padding-top: 1rem; }
 
-/* ===== PC/태블릿: 분할 뷰어 ===== */
-@media (min-width: 768px) {
-    .viewer-tabs { display: none; }
+/* ===== 분할 뷰어 (항상 나란히) ===== */
+.viewer-tabs { display: none; }
 
+.modal-viewer-area {
+    display: flex;
+    flex-direction: row;
+    gap: 1rem;
+    height: 60vh;
+    margin-top: 1rem;
+}
+
+.modal-viewer-area .tab-pane {
+    flex: 1;
+    overflow: hidden;
+    min-width: 0;
+    padding-top: 0;
+}
+
+.modal-viewer-area .msds-content-html {
+    max-height: 100%;
+    height: 100%;
+    overflow-y: auto;
+}
+
+.modal-viewer-area .pdf-viewer-container {
+    height: 100%;
+    min-height: unset;
+}
+
+.modal-viewer-area .pdf-viewer-container iframe {
+    height: 100%;
+}
+
+/* 모바일: 세로 스택 */
+@media (max-width: 767px) {
     .modal-viewer-area {
-        display: flex;
-        flex-direction: row;
-        gap: 1rem;
-        height: 65vh;
+        flex-direction: column;
+        height: auto;
     }
-
     .modal-viewer-area .tab-pane {
-        display: block !important;
-        flex: 1;
-        overflow: hidden;
-        min-width: 0;
-        padding-top: 0;
-    }
-
-    .modal-viewer-area .msds-content-html {
-        max-height: 100%;
-        height: 100%;
-        overflow-y: auto;
-    }
-
-    .modal-viewer-area .pdf-viewer-container {
-        height: 100%;
-        min-height: unset;
-    }
-
-    .modal-viewer-area .pdf-viewer-container iframe {
-        height: 100%;
+        height: 300px;
     }
 }
 
