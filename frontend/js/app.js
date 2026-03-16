@@ -156,13 +156,19 @@ function registerEventListeners() {
     // 초기화 버튼
     document.getElementById('resetFilters').addEventListener('click', resetFilters);
 
-    // 검색하기 버튼
-    document.getElementById('filterSearchBtn').addEventListener('click', () => {
-        state.selectedCategory    = document.getElementById('selectCategory').value;
-        state.selectedHazard      = document.getElementById('selectHazard').value;
+    // 드롭다운 변경 시 즉시 반영
+    const syncAndApply = () => {
+        state.selectedCategory     = document.getElementById('selectCategory').value;
+        state.selectedHazard       = document.getElementById('selectHazard').value;
         state.selectedManufacturer = document.getElementById('selectManufacturer').value;
         applyFilters();
-    });
+    };
+    document.getElementById('selectCategory').addEventListener('change', syncAndApply);
+    document.getElementById('selectHazard').addEventListener('change', syncAndApply);
+    document.getElementById('selectManufacturer').addEventListener('change', syncAndApply);
+
+    // 검색하기 버튼 (명시적 실행용)
+    document.getElementById('filterSearchBtn').addEventListener('click', syncAndApply);
 
     // 탭 클릭
     document.querySelectorAll('.filter-tab-btn').forEach(btn => {
