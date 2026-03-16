@@ -7,9 +7,9 @@ const state = {
     total: 0,               // 전체 건수 (서버 제공)
     page: 1,
     page_size: 20,
-    selectedCategories: new Set(),
-    selectedHazards: new Set(),
-    selectedManufacturers: new Set(),
+    selectedCategory: '',
+    selectedHazard: '',
+    selectedManufacturer: '',
     searchQuery: '',
     currentView: 'grid',
 };
@@ -43,6 +43,7 @@ async function initializeApp() {
     document.getElementById('categoryCount').textContent = stats.categoryCount;
 
     initializeFilters(categories, hazardLevels, manufacturers);
+    activateTab('category');
     renderCards();
     renderPagination();
     updateStats();
@@ -60,13 +61,14 @@ async function initializeApp() {
 async function fetchAndRender(page = 1) {
     showLoading(true);
     try {
-        const q = state.searchQuery || undefined;
-        // 다중 선택 시 첫 번째 값만 서버로 전달
-        const category     = state.selectedCategories.size    === 1 ? [...state.selectedCategories][0]    : undefined;
-        const hazard       = state.selectedHazards.size       === 1 ? [...state.selectedHazards][0]       : undefined;
-        const manufacturer = state.selectedManufacturers.size === 1 ? [...state.selectedManufacturers][0] : undefined;
-
-        const result = await api.getMSDS({ q, category, hazard, manufacturer, page, page_size: state.page_size });
+        const result = await api.getMSDS({
+            q:            state.searchQuery    || undefined,
+            category:     state.selectedCategory    || undefined,
+            hazard:       state.selectedHazard      || undefined,
+            manufacturer: state.selectedManufacturer || undefined,
+            page,
+            page_size: state.page_size,
+        });
         state.items = result.items;
         state.total = result.total;
         state.page  = result.page;
@@ -100,32 +102,45 @@ function showError(msg) {
 
 // ========== 필터 초기화 ==========
 function initializeFilters(categories, hazardLevels, manufacturers) {
-    const catList = document.getElementById('categoryFilterList');
-    categories.forEach(({ name, count }) => catList.appendChild(createFilterCheckbox(name, count, 'category')));
-
-    const hazList = document.getElementById('hazardFilterList');
-    hazardLevels.forEach(({ name, count }) => hazList.appendChild(createFilterCheckbox(name, count, 'hazard')));
-
-    const mfrList = document.getElementById('manufacturerFilterList');
-    manufacturers.forEach(({ name, count }) => mfrList.appendChild(createFilterCheckbox(name, count, 'manufacturer')));
-}
-
-function createFilterCheckbox(label, count, type) {
-    const div = document.createElement('div');
-    div.className = 'filter-checkbox';
-    const safeLabel = escapeHtml(label);
-    const safeType  = escapeHtml(type);
-    div.innerHTML = `
-        <input type="checkbox" id="${safeType}-${safeLabel}" value="${safeLabel}" data-type="${safeType}">
-        <label for="${safeType}-${safeLabel}">${safeLabel}</label>
-        <span class="filter-count">${count}</span>
-    `;
-    const cb = div.querySelector('input');
-    cb.addEventListener('change', function() {
-        handleFilterChange(type, label, this.checked);
-        div.classList.toggle('active', this.checked);
+    // 드롭다운 옵션 채우기
+    const catSel = document.getElementById('selectCategory');
+    categories.forEach(({ name, count }) => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = `${name} (${count})`;
+        catSel.appendChild(opt);
     });
-    return div;
+
+    const hazSel = document.getElementById('selectHazard');
+    hazardLevels.forEach(({ name, count }) => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = `${name} (${count})`;
+        hazSel.appendChild(opt);
+    });
+
+    const mfrSel = document.getElementById('selectManufacturer');
+    manufacturers.forEach(({ name, count }) => {
+        const opt = document.createElement('option');
+        opt.value = name;
+        opt.textContent = `${name} (${count})`;
+        mfrSel.appendChild(opt);
+    });
+
+    // 인기 카테고리 빠른 태그 (상위 6개)
+    const quickTags = document.getElementById('quickTags');
+    categories.slice(0, 6).forEach(({ name }) => {
+        const btn = document.createElement('button');
+        btn.className = 'quick-tag';
+        btn.textContent = `#${name}`;
+        btn.addEventListener('click', () => {
+            state.selectedCategory = name;
+            catSel.value = name;
+            activateTab('category');
+            applyFilters();
+        });
+        quickTags.appendChild(btn);
+    });
 }
 
 // ========== 이벤트 등록 ==========
@@ -137,12 +152,22 @@ function registerEventListeners() {
         document.getElementById('clearSearch').style.display = 'none';
         applyFilters();
     });
+
+    // 초기화 버튼
     document.getElementById('resetFilters').addEventListener('click', resetFilters);
 
-    document.querySelectorAll('.toggle-filter').forEach(btn => {
+    // 검색하기 버튼
+    document.getElementById('filterSearchBtn').addEventListener('click', () => {
+        state.selectedCategory    = document.getElementById('selectCategory').value;
+        state.selectedHazard      = document.getElementById('selectHazard').value;
+        state.selectedManufacturer = document.getElementById('selectManufacturer').value;
+        applyFilters();
+    });
+
+    // 탭 클릭
+    document.querySelectorAll('.filter-tab-btn').forEach(btn => {
         btn.addEventListener('click', function() {
-            document.getElementById(this.dataset.target).classList.toggle('collapsed');
-            this.classList.toggle('active');
+            activateTab(this.dataset.tab);
         });
     });
 
@@ -165,18 +190,22 @@ function registerEventListeners() {
     document.querySelector('#pdfModal .modal-overlay').addEventListener('click', closeModal);
 }
 
+// ========== 탭 활성화 ==========
+function activateTab(tab) {
+    document.querySelectorAll('.filter-tab-btn').forEach(btn => btn.classList.remove('active'));
+    document.querySelector(`.filter-tab-btn[data-tab="${tab}"]`).classList.add('active');
+
+    // 해당 탭의 select wrap에 primary 스타일 적용
+    ['category', 'hazard', 'manufacturer'].forEach(t => {
+        document.getElementById(`selectWrap${t.charAt(0).toUpperCase() + t.slice(1)}`)
+            .classList.toggle('filter-select-wrap--primary', t === tab);
+    });
+}
+
 // ========== 검색 / 필터 ==========
 function handleSearch(e) {
     state.searchQuery = e.target.value.trim().toLowerCase();
     document.getElementById('clearSearch').style.display = state.searchQuery ? 'block' : 'none';
-    applyFilters();
-}
-
-function handleFilterChange(type, value, checked) {
-    const map = { category: state.selectedCategories, hazard: state.selectedHazards, manufacturer: state.selectedManufacturers };
-    const set = map[type];
-    if (!set) return;
-    checked ? set.add(value) : set.delete(value);
     applyFilters();
 }
 
@@ -185,19 +214,16 @@ function applyFilters() {
 }
 
 function resetFilters() {
-    state.selectedCategories.clear();
-    state.selectedHazards.clear();
-    state.selectedManufacturers.clear();
+    state.selectedCategory    = '';
+    state.selectedHazard      = '';
+    state.selectedManufacturer = '';
     state.searchQuery = '';
     document.getElementById('searchInput').value = '';
     document.getElementById('clearSearch').style.display = 'none';
-    document.querySelectorAll('.filter-checkbox input').forEach(cb => { cb.checked = false; });
-    document.querySelectorAll('.filter-checkbox').forEach(el => el.classList.remove('active'));
-    // 위험등급, 제조사 필터 닫힘 상태로 복원
-    ['hazardFilter', 'manufacturerFilter'].forEach(id => {
-        document.getElementById(id).classList.add('collapsed');
-        document.querySelector(`[data-target="${id}"]`).classList.add('active');
-    });
+    document.getElementById('selectCategory').value    = '';
+    document.getElementById('selectHazard').value      = '';
+    document.getElementById('selectManufacturer').value = '';
+    activateTab('category');
     applyFilters();
 }
 
@@ -245,7 +271,7 @@ function renderCards() {
 
 function updateStats() {
     const info = document.getElementById('searchResultsInfo');
-    const active = state.searchQuery || state.selectedCategories.size || state.selectedHazards.size || state.selectedManufacturers.size;
+    const active = state.searchQuery || state.selectedCategory || state.selectedHazard || state.selectedManufacturer;
     info.innerHTML = active ? `<i class="fas fa-info-circle"></i> <strong>${state.total}개</strong>의 결과` : '';
 }
 

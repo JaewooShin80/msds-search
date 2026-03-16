@@ -15,8 +15,11 @@
         <div class="container">
             <div class="header-content">
                 <div class="logo">
-                    <i class="fas fa-shield-alt"></i>
-                    <span>MSDS 검색 시스템</span>
+                    <img src="/images/skecoplant-ci.png" alt="SK에코플랜트" class="sk-logo">
+                    <div class="logo-text">
+                        <span class="logo-title">MSDS 검색 시스템</span>
+                        <span class="logo-brand">SK에코플랜트</span>
+                    </div>
                 </div>
                 <div class="header-actions">
                     <div class="header-stats">
@@ -42,57 +45,59 @@
         </div>
     </header>
 
-    <!-- Search Section -->
-    <section class="search-section">
+    <!-- Hero Search Section -->
+    <section class="hero-search">
         <div class="container">
+            <h1 class="hero-title">어떤 MSDS를 찾으세요?</h1>
+
+            <!-- 검색 바 -->
             <div class="search-box">
                 <i class="fas fa-search search-icon"></i>
                 <input type="text" id="searchInput" class="search-input"
-                    placeholder="제품명, 제조사로 검색..." autocomplete="off">
+                    placeholder="제품명, 제조사, CAS번호로 검색..." autocomplete="off">
                 <button class="clear-search" id="clearSearch" style="display: none;">
                     <i class="fas fa-times"></i>
                 </button>
             </div>
-            <div class="search-results-info" id="searchResultsInfo"></div>
-        </div>
-    </section>
 
-    <!-- Filters Section -->
-    <section class="filters-section">
-        <div class="container">
-            <div class="filters-header">
-                <h2><i class="fas fa-filter"></i> 필터</h2>
-                <button class="btn-reset" id="resetFilters">
-                    <i class="fas fa-redo"></i> 초기화
-                </button>
-            </div>
-            <div class="filter-group">
-                <h3 class="filter-title">
-                    <i class="fas fa-layer-group"></i> 카테고리
-                    <button class="toggle-filter" data-target="categoryFilter"><i class="fas fa-chevron-down"></i></button>
-                </h3>
-                <div class="filter-content" id="categoryFilter">
-                    <div class="filter-grid" id="categoryFilterList"></div>
+            <!-- 인기 카테고리 태그 -->
+            <div class="quick-tags" id="quickTags"></div>
+
+            <!-- 필터 패널 -->
+            <div class="filter-panel">
+                <div class="filter-tabs-nav">
+                    <button class="filter-tab-btn active" data-tab="category">
+                        <span class="tab-check"><i class="fas fa-check"></i></span> 카테고리별 찾기
+                    </button>
+                    <span class="tab-divider">|</span>
+                    <button class="filter-tab-btn" data-tab="hazard">위험등급별 찾기</button>
+                    <span class="tab-divider">|</span>
+                    <button class="filter-tab-btn" data-tab="manufacturer">제조사별 찾기</button>
+                </div>
+                <div class="filter-dropdowns-row">
+                    <div class="filter-select-wrap" id="selectWrapCategory">
+                        <select id="selectCategory" class="filter-select">
+                            <option value="">카테고리</option>
+                        </select>
+                        <i class="fas fa-chevron-down select-arrow"></i>
+                    </div>
+                    <div class="filter-select-wrap" id="selectWrapHazard">
+                        <select id="selectHazard" class="filter-select">
+                            <option value="">위험등급</option>
+                        </select>
+                        <i class="fas fa-chevron-down select-arrow"></i>
+                    </div>
+                    <div class="filter-select-wrap" id="selectWrapManufacturer">
+                        <select id="selectManufacturer" class="filter-select">
+                            <option value="">제조사</option>
+                        </select>
+                        <i class="fas fa-chevron-down select-arrow"></i>
+                    </div>
+                    <button class="btn-filter-search" id="filterSearchBtn">검색하기</button>
                 </div>
             </div>
-            <div class="filter-group">
-                <h3 class="filter-title">
-                    <i class="fas fa-exclamation-triangle"></i> 위험등급
-                    <button class="toggle-filter active" data-target="hazardFilter"><i class="fas fa-chevron-down"></i></button>
-                </h3>
-                <div class="filter-content collapsed" id="hazardFilter">
-                    <div class="filter-grid" id="hazardFilterList"></div>
-                </div>
-            </div>
-            <div class="filter-group">
-                <h3 class="filter-title">
-                    <i class="fas fa-industry"></i> 제조사
-                    <button class="toggle-filter active" data-target="manufacturerFilter"><i class="fas fa-chevron-down"></i></button>
-                </h3>
-                <div class="filter-content collapsed" id="manufacturerFilter">
-                    <div class="filter-grid" id="manufacturerFilterList"></div>
-                </div>
-            </div>
+
+            <div class="search-results-info" id="searchResultsInfo"></div>
         </div>
     </section>
 
@@ -102,6 +107,9 @@
             <div class="section-header">
                 <h2><i class="fas fa-file-alt"></i> MSDS 목록</h2>
                 <div class="view-options">
+                    <button class="btn-reset" id="resetFilters">
+                        <i class="fas fa-redo"></i> 초기화
+                    </button>
                     <button class="view-btn active" data-view="grid" title="그리드 보기"><i class="fas fa-th"></i></button>
                     <button class="view-btn" data-view="list" title="리스트 보기"><i class="fas fa-list"></i></button>
                 </div>
@@ -154,7 +162,7 @@
     <footer class="footer">
         <div class="container">
             <div class="footer-content">
-                <p>&copy; 2026 MSDS 검색 시스템. All rights reserved.</p>
+                <p>&copy; 2026 SK에코플랜트 · MSDS 검색 시스템. All rights reserved.</p>
                 <p class="footer-note">
                     <i class="fas fa-info-circle"></i>
                     물질안전보건자료는 화학물질의 안전한 취급을 위한 필수 정보입니다.
