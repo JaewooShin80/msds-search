@@ -36,9 +36,12 @@ limiter = Limiter(key_func=get_remote_address)
 # ========== DB 초기화 및 Seed ==========
 @asynccontextmanager
 async def lifespan(app: FastAPI):
-    init_db()
-    seed_db()
-    logger.info("DB 초기화 완료")
+    try:
+        init_db()
+        seed_db()
+        logger.info("DB 초기화 완료")
+    except Exception as e:
+        logger.error("DB 초기화 실패 — 앱은 시작하지만 DB 기능은 동작하지 않을 수 있습니다", extra={"error": str(e)})
     yield
 
 

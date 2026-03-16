@@ -20,16 +20,19 @@ RUN pip install --no-cache-dir -r requirements.txt
 COPY backend/ ./backend/
 COPY frontend/ ./frontend/
 
-# 7. non-root 사용자로 전환
+# 7. 업로드 디렉토리 생성 및 소유권 이전 (appuser가 쓸 수 있도록)
+RUN mkdir -p /app/backend/uploads/pdfs && chown -R appuser:appuser /app
+
+# 8. non-root 사용자로 전환
 USER appuser
 
-# 8. 포트 노출
+# 9. 포트 노출
 EXPOSE 8080
 
-# 9. 헬스체크
+# 10. 헬스체크
 HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
     CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health')" || exit 1
 
-# 10. 실행 (exec-form으로 시그널 정상 전달)
+# 11. 실행 (exec-form으로 시그널 정상 전달)
 WORKDIR /app/backend
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]
