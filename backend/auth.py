@@ -1,19 +1,39 @@
+"""관리자 인증 — PyJWT 기반 (8시간 만료)"""
 import os
-import hmac
-import hashlib
 import secrets
+from datetime import datetime, timezone, timedelta
+
+import jwt
 from fastapi import Header, HTTPException
 
 
-def _expected_token() -> str:
-    """ADMIN_ID + ADMIN_PW 기반 stateless 토큰 생성 (Cloud Run 다중 인스턴스 대응)"""
-    admin_id = os.getenv("ADMIN_ID", "")
-    admin_pw = os.getenv("ADMIN_PW", "")
-    return hmac.new(admin_pw.encode(), admin_id.encode(), hashlib.sha256).hexdigest()
+def _secret_key() -> str:
+    key = os.getenv("ADMIN_PW", "")
+    if not key:
+        raise HTTPException(status_code=500, detail="서버에 관리자 계정이 설정되지 않았습니다.")
+    return key
+
+
+def create_token() -> str:
+    """JWT 토큰 생성 (만료: 8시간)"""
+    now = datetime.now(timezone.utc)
+    payload = {"sub": "admin", "iat": now, "exp": now + timedelta(hours=8)}
+    return jwt.encode(payload, _secret_key(), algorithm="HS256")
+
+
+def verify_token(token: str) -> bool:
+    """JWT 토큰 검증 — 만료·무효 시 False"""
+    try:
+        jwt.decode(token, _secret_key(), algorithms=["HS256"])
+        return True
+    except jwt.ExpiredSignatureError:
+        return False
+    except jwt.InvalidTokenError:
+        return False
 
 
 def verify_login(admin_id: str, admin_pw: str) -> str:
-    """ID/PW 검증 후 토큰 반환. 실패 시 HTTPException 발생."""
+    """ID/PW 검증 후 JWT 토큰 반환. 실패 시 HTTPException 발생."""
     expected_id = os.getenv("ADMIN_ID", "")
     expected_pw = os.getenv("ADMIN_PW", "")
 
@@ -26,12 +46,12 @@ def verify_login(admin_id: str, admin_pw: str) -> str:
     if not (id_ok and pw_ok):
         raise HTTPException(status_code=401, detail="아이디 또는 비밀번호가 올바르지 않습니다.")
 
-    return _expected_token()
+    return create_token()
 
 
 def require_admin(x_admin_token: str = Header(default=None)):
     """POST/PUT/DELETE 엔드포인트에 적용하는 관리자 인증 dependency"""
     if not x_admin_token:
         raise HTTPException(status_code=401, detail="관리자 인증이 필요합니다.")
-    if not secrets.compare_digest(x_admin_token, _expected_token()):
-        raise HTTPException(status_code=401, detail="유효하지 않은 인증 토큰입니다.")
+    if not verify_token(x_admin_token):
+        raise HTTPException(status_code=401, detail="유효하지 않거나 만료된 인증 토큰입니다.")

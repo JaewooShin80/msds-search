@@ -1,12 +1,14 @@
 import asyncio
+import ipaddress
 import json
+import logging
 import os
 import re
 import uuid
-from pathlib import Path
 from datetime import date
+from pathlib import Path
 from typing import Optional
-from urllib.parse import quote
+from urllib.parse import quote, urlparse
 
 import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
@@ -16,9 +18,15 @@ from fastapi.responses import FileResponse, StreamingResponse
 from auth import require_admin
 from db.database import get_connection
 from services.analyzer import analyze
-from services.gcs import upload_pdf as gcs_upload_pdf, download_bytes as gcs_download, exists as gcs_exists, iter_prefix_pdfs as gcs_iter_prefix_pdfs
+from services.gcs import (
+    upload_pdf as gcs_upload_pdf,
+    download_bytes as gcs_download,
+    exists as gcs_exists,
+    list_prefix_pdfs as gcs_list_prefix_pdfs,
+)
 
 router = APIRouter()
+logger = logging.getLogger(__name__)
 
 UPLOAD_DIR = Path(__file__).parent.parent / os.getenv("UPLOAD_DIR", "./uploads/pdfs")
 UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
@@ -31,28 +39,88 @@ MAX_PDF_SIZE = 50 * 1024 * 1024  # 50MB
 def row_to_dict(row) -> dict:
     d = dict(row)
     d["keywords"] = json.loads(d.get("keywords") or "[]")
+    d.pop("search_vector", None)  # FTS 컬럼은 응답에서 제외
     return d
 
 
 def _validate_pdf(pdf_bytes: bytes) -> None:
-    """H4: magic bytes 검증 + 크기 제한 (50MB)"""
+    """magic bytes 검증 + 크기 제한 (50MB)"""
     if len(pdf_bytes) > MAX_PDF_SIZE:
         raise HTTPException(status_code=413, detail="파일 크기가 50MB를 초과합니다.")
     if not pdf_bytes.startswith(b"%PDF"):
         raise HTTPException(status_code=400, detail="유효한 PDF 파일이 아닙니다.")
 
 
-def _save_pdf_to_gcs(pdf_bytes: bytes, original_filename: str) -> str:
-    """PDF를 GCS에 업로드하고 GCS 경로 반환"""
-    return gcs_upload_pdf(pdf_bytes, original_filename)
+def _validate_url(url: str) -> None:
+    """SSRF 방어: https만 허용, 사설IP/localhost/메타데이터 서버 차단"""
+    parsed = urlparse(url)
+    if parsed.scheme not in ("https",):
+        raise HTTPException(status_code=400, detail="https URL만 허용됩니다.")
+
+    hostname = parsed.hostname
+    if not hostname:
+        raise HTTPException(status_code=400, detail="유효하지 않은 URL입니다.")
+
+    # Localhost 및 메타데이터 서버 차단
+    blocked_hosts = {"localhost", "127.0.0.1", "::1", "169.254.169.254", "metadata.google.internal"}
+    if hostname in blocked_hosts:
+        raise HTTPException(status_code=400, detail="내부 주소로의 요청은 허용되지 않습니다.")
+
+    # 사설 IP 주소 차단
+    try:
+        ip = ipaddress.ip_address(hostname)
+        if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
+            raise HTTPException(status_code=400, detail="사설 IP 주소로의 요청은 허용되지 않습니다.")
+    except ValueError:
+        pass  # 도메인 이름은 IP 파싱 불필요
+
+
+def _insert_msds(cur, data: dict) -> int:
+    """MSDS INSERT 공통 헬퍼 — 새 id 반환"""
+    cur.execute(
+        """
+        INSERT INTO msds
+            (product_name, manufacturer, category, hazard_level,
+             revision_date, pdf_path, pdf_url,
+             description, keywords, content_html, ai_analyzed)
+        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
+        RETURNING id
+        """,
+        (
+            data["product_name"],
+            data["manufacturer"],
+            data["category"],
+            data["hazard_level"],
+            data["revision_date"],
+            data.get("pdf_path"),
+            data.get("pdf_url"),
+            data.get("description", ""),
+            data["keywords"],
+            data.get("content_html"),
+            data.get("ai_analyzed", 0),
+        ),
+    )
+    return cur.fetchone()["id"]
+
+
+async def _process_pdf(pdf_bytes: bytes, filename: str) -> tuple:
+    """PDF 처리 파이프라인: validate → analyze → GCS upload
+    반환: (gcs_path, fields, content_html, ai_analyzed)"""
+    _validate_pdf(pdf_bytes)
+    gcs_path = await asyncio.to_thread(gcs_upload_pdf, pdf_bytes, filename)
+    result = await asyncio.to_thread(analyze, pdf_bytes)
+    fields = result.get("fields", {})
+    content_html = result.get("content_html", "")
+    ai_analyzed = 1 if result.get("mode") == "ai" else 0
+    return gcs_path, fields, content_html, ai_analyzed
 
 
 def _extract_gdrive_file_id(url: str) -> Optional[str]:
     """Google Drive 공유 URL에서 파일 ID 추출"""
     patterns = [
-        r'/file/d/([a-zA-Z0-9_-]+)',       # /file/d/{id}/view
-        r'[?&]id=([a-zA-Z0-9_-]+)',         # ?id={id}
-        r'/open\?id=([a-zA-Z0-9_-]+)',      # /open?id={id}
+        r'/file/d/([a-zA-Z0-9_-]+)',
+        r'[?&]id=([a-zA-Z0-9_-]+)',
+        r'/open\?id=([a-zA-Z0-9_-]+)',
     ]
     for p in patterns:
         m = re.search(p, url)
@@ -72,7 +140,6 @@ async def _download_from_gdrive(url: str) -> bytes:
     async with httpx.AsyncClient(timeout=60, follow_redirects=True) as client:
         r = await client.get(download_url)
 
-        # H2: 연산자 우선순위 버그 수정 — 괄호 추가
         if r.status_code == 200 and (b"virus scan warning" in r.content.lower() or b"confirm=" in r.content):
             confirm_match = re.search(r'confirm=([0-9A-Za-z_-]+)', r.text)
             if confirm_match:
@@ -94,8 +161,8 @@ async def _download_from_gdrive(url: str) -> bytes:
 @router.post("/analyze", dependencies=[Depends(require_admin)])
 async def analyze_pdf(pdf: UploadFile = File(...)):
     pdf_bytes = await pdf.read()
-    _validate_pdf(pdf_bytes)                              # H4 — magic bytes로 PDF 검증
-    result = await asyncio.to_thread(analyze, pdf_bytes)  # H6
+    _validate_pdf(pdf_bytes)
+    result = await asyncio.to_thread(analyze, pdf_bytes)
     result["extracted_preview"] = result.pop("extracted", "")[:3000]
     return result
 
@@ -103,13 +170,13 @@ async def analyze_pdf(pdf: UploadFile = File(...)):
 @router.post("/analyze-gdrive", dependencies=[Depends(require_admin)])
 async def analyze_gdrive(gdrive_url: str = Form(...)):
     pdf_bytes = await _download_from_gdrive(gdrive_url)
-    _validate_pdf(pdf_bytes)                              # H4
-    result = await asyncio.to_thread(analyze, pdf_bytes)  # H6
+    _validate_pdf(pdf_bytes)
+    result = await asyncio.to_thread(analyze, pdf_bytes)
     result["extracted_preview"] = result.pop("extracted", "")[:3000]
     return result
 
 
-# ---------- 목록 조회 (검색 + 필터) ----------
+# ---------- 목록 조회 (검색 + 필터 + 페이지네이션) ----------
 
 @router.get("")
 def get_all(
@@ -117,41 +184,69 @@ def get_all(
     category: Optional[str] = None,
     hazard: Optional[str] = None,
     manufacturer: Optional[str] = None,
+    page: int = 1,
+    page_size: int = 20,
     conn=Depends(get_connection),
 ):
-    sql = "SELECT * FROM msds WHERE 1=1"
+    page_size = min(max(page_size, 1), 100)
+    page = max(page, 1)
+    offset = (page - 1) * page_size
+
+    where = "WHERE 1=1"
     params: list = []
 
     if q:
-        like = f"%{q}%"
-        sql += """
-            AND (product_name LIKE %s OR manufacturer LIKE %s
-                 OR description LIKE %s OR keywords LIKE %s)
+        where += """
+            AND (
+                search_vector @@ plainto_tsquery('simple', %s)
+                OR product_name ILIKE %s
+                OR manufacturer ILIKE %s
+                OR description ILIKE %s
+                OR keywords ILIKE %s
+            )
         """
-        params.extend([like, like, like, like])
+        like = f"%{q}%"
+        params.extend([q, like, like, like, like])
 
     if category:
         cats = [c.strip() for c in category.split(",") if c.strip()]
-        sql += f" AND category IN ({','.join(['%s'] * len(cats))})"
+        where += f" AND category IN ({','.join(['%s'] * len(cats))})"
         params.extend(cats)
 
     if hazard:
         hazards = [h.strip() for h in hazard.split(",") if h.strip()]
-        sql += f" AND hazard_level IN ({','.join(['%s'] * len(hazards))})"
+        where += f" AND hazard_level IN ({','.join(['%s'] * len(hazards))})"
         params.extend(hazards)
 
     if manufacturer:
         mfrs = [m.strip() for m in manufacturer.split(",") if m.strip()]
-        sql += f" AND manufacturer IN ({','.join(['%s'] * len(mfrs))})"
+        where += f" AND manufacturer IN ({','.join(['%s'] * len(mfrs))})"
         params.extend(mfrs)
 
-    sql += " ORDER BY id ASC"
-
     cur = conn.cursor()
-    cur.execute(sql, params)
+
+    cur.execute(f"SELECT COUNT(*) FROM msds {where}", params)
+    total = cur.fetchone()["count"]
+
+    cur.execute(
+        f"""
+        SELECT id, product_name, manufacturer, category, hazard_level,
+               revision_date, pdf_path, pdf_url, description, keywords,
+               ai_analyzed, created_at, updated_at
+        FROM msds {where}
+        ORDER BY id ASC
+        LIMIT %s OFFSET %s
+        """,
+        params + [page_size, offset],
+    )
     rows = cur.fetchall()
-    conn.close()
-    return [row_to_dict(r) for r in rows]
+
+    return {
+        "items": [row_to_dict(r) for r in rows],
+        "total": total,
+        "page": page,
+        "page_size": page_size,
+    }
 
 
 # ---------- 단건 조회 ----------
@@ -161,7 +256,6 @@ def get_one(msds_id: int, conn=Depends(get_connection)):
     cur = conn.cursor()
     cur.execute("SELECT * FROM msds WHERE id = %s", (msds_id,))
     row = cur.fetchone()
-    conn.close()
     if not row:
         raise HTTPException(status_code=404, detail="MSDS를 찾을 수 없습니다.")
     return row_to_dict(row)
@@ -175,7 +269,6 @@ async def download(msds_id: int, conn=Depends(get_connection)):
     cur = conn.cursor()
     cur.execute("SELECT * FROM msds WHERE id = %s", (msds_id,))
     row = cur.fetchone()
-    conn.close()
     if not row:
         raise HTTPException(status_code=404, detail="MSDS를 찾을 수 없습니다.")
 
@@ -193,9 +286,13 @@ async def download(msds_id: int, conn=Depends(get_connection)):
         except Exception:
             pass
 
-    # 2) 로컬 파일 (기존 호환)
+    # 2) 로컬 파일 (기존 호환) — 경로 탐색 방어
     if row["pdf_path"]:
         path = UPLOAD_DIR / row["pdf_path"]
+        try:
+            path.resolve().relative_to(UPLOAD_DIR.resolve())
+        except ValueError:
+            raise HTTPException(status_code=400, detail="유효하지 않은 파일 경로입니다.")
         if path.exists():
             return FileResponse(
                 path=str(path),
@@ -203,8 +300,9 @@ async def download(msds_id: int, conn=Depends(get_connection)):
                 headers={"Content-Disposition": filename_header},
             )
 
-    # 3) 외부 URL — H3: verify=False 제거
+    # 3) 외부 URL — SSRF 방어
     if row["pdf_url"]:
+        _validate_url(row["pdf_url"])
         async with httpx.AsyncClient(timeout=30) as client:
             r = await client.get(row["pdf_url"])
         if r.status_code != 200:
@@ -239,18 +337,21 @@ async def create(
     pdf_path = None
     if pdf and pdf.filename:
         pdf_bytes = await pdf.read()
-        _validate_pdf(pdf_bytes)                                      # H4
+        _validate_pdf(pdf_bytes)
         if not content_html:
-            result = await asyncio.to_thread(analyze, pdf_bytes)      # H6
+            result = await asyncio.to_thread(analyze, pdf_bytes)
             content_html = result.get("content_html")
-        pdf_path = _save_pdf_to_gcs(pdf_bytes, pdf.filename)
+        pdf_path = await asyncio.to_thread(gcs_upload_pdf, pdf_bytes, pdf.filename)
     elif gdrive_url:
         pdf_bytes = await _download_from_gdrive(gdrive_url)
-        _validate_pdf(pdf_bytes)                                      # H4
+        _validate_pdf(pdf_bytes)
         if not content_html:
-            result = await asyncio.to_thread(analyze, pdf_bytes)      # H6
+            result = await asyncio.to_thread(analyze, pdf_bytes)
             content_html = result.get("content_html")
-        pdf_path = _save_pdf_to_gcs(pdf_bytes, "gdrive.pdf")
+        pdf_path = await asyncio.to_thread(gcs_upload_pdf, pdf_bytes, "gdrive.pdf")
+
+    if pdf_url:
+        _validate_url(pdf_url)
 
     try:
         kw = json.dumps(json.loads(keywords) if keywords else [])
@@ -258,24 +359,22 @@ async def create(
         raise HTTPException(status_code=422, detail="keywords는 유효한 JSON 배열이어야 합니다.")
 
     cur = conn.cursor()
-    cur.execute(
-        """
-        INSERT INTO msds
-            (product_name, manufacturer, category, hazard_level,
-             revision_date, pdf_path, pdf_url,
-             description, keywords, content_html, ai_analyzed)
-        VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-        RETURNING id
-        """,
-        (product_name, manufacturer, category, hazard_level,
-         revision_date, pdf_path, pdf_url,
-         description, kw, content_html, ai_analyzed),
-    )
-    new_id = cur.fetchone()["id"]
+    new_id = _insert_msds(cur, {
+        "product_name": product_name,
+        "manufacturer": manufacturer,
+        "category": category,
+        "hazard_level": hazard_level,
+        "revision_date": revision_date,
+        "pdf_path": pdf_path,
+        "pdf_url": pdf_url,
+        "description": description,
+        "keywords": kw,
+        "content_html": content_html,
+        "ai_analyzed": ai_analyzed,
+    })
     conn.commit()
     cur.execute("SELECT * FROM msds WHERE id = %s", (new_id,))
     row = cur.fetchone()
-    conn.close()
     return row_to_dict(row)
 
 
@@ -301,7 +400,6 @@ async def update(
     cur.execute("SELECT * FROM msds WHERE id = %s", (msds_id,))
     existing = cur.fetchone()
     if not existing:
-        conn.close()
         raise HTTPException(status_code=404, detail="MSDS를 찾을 수 없습니다.")
 
     e = dict(existing)
@@ -309,18 +407,21 @@ async def update(
 
     if pdf and pdf.filename:
         pdf_bytes = await pdf.read()
-        _validate_pdf(pdf_bytes)                                      # H4
+        _validate_pdf(pdf_bytes)
         if not content_html:
-            result = await asyncio.to_thread(analyze, pdf_bytes)      # H6
+            result = await asyncio.to_thread(analyze, pdf_bytes)
             content_html = result.get("content_html")
-        pdf_path = _save_pdf_to_gcs(pdf_bytes, pdf.filename)
+        pdf_path = await asyncio.to_thread(gcs_upload_pdf, pdf_bytes, pdf.filename)
     elif gdrive_url:
         pdf_bytes = await _download_from_gdrive(gdrive_url)
-        _validate_pdf(pdf_bytes)                                      # H4
+        _validate_pdf(pdf_bytes)
         if not content_html:
-            result = await asyncio.to_thread(analyze, pdf_bytes)      # H6
+            result = await asyncio.to_thread(analyze, pdf_bytes)
             content_html = result.get("content_html")
-        pdf_path = _save_pdf_to_gcs(pdf_bytes, "gdrive.pdf")
+        pdf_path = await asyncio.to_thread(gcs_upload_pdf, pdf_bytes, "gdrive.pdf")
+
+    if pdf_url:
+        _validate_url(pdf_url)
 
     try:
         kw = json.dumps(json.loads(keywords)) if keywords else e["keywords"]
@@ -360,7 +461,6 @@ async def update(
     conn.commit()
     cur.execute("SELECT * FROM msds WHERE id = %s", (msds_id,))
     row = cur.fetchone()
-    conn.close()
     return row_to_dict(row)
 
 
@@ -369,14 +469,11 @@ async def update(
 @router.delete("/{msds_id}", dependencies=[Depends(require_admin)])
 def delete(msds_id: int, conn=Depends(get_connection)):
     cur = conn.cursor()
-    cur.execute("SELECT * FROM msds WHERE id = %s", (msds_id,))
-    existing = cur.fetchone()
-    if not existing:
-        conn.close()
+    cur.execute("SELECT id FROM msds WHERE id = %s", (msds_id,))
+    if not cur.fetchone():
         raise HTTPException(status_code=404, detail="MSDS를 찾을 수 없습니다.")
     cur.execute("DELETE FROM msds WHERE id = %s", (msds_id,))
     conn.commit()
-    conn.close()
     return {"message": "삭제되었습니다."}
 
 
@@ -395,40 +492,27 @@ async def bulk_upload(
         filename = pdf.filename or "unknown.pdf"
         try:
             pdf_bytes = await pdf.read()
-            _validate_pdf(pdf_bytes)                                  # H4 — magic bytes로 PDF 검증
+            _validate_pdf(pdf_bytes)
 
-            gcs_path = gcs_upload_pdf(pdf_bytes, filename)
-
-            result = await asyncio.to_thread(analyze, pdf_bytes)      # H6
+            gcs_path = await asyncio.to_thread(gcs_upload_pdf, pdf_bytes, filename)
+            result = await asyncio.to_thread(analyze, pdf_bytes)
             fields = result.get("fields", {})
             content_html = result.get("content_html", "")
             ai_analyzed = 1 if result.get("mode") == "ai" else 0
 
-            kw = json.dumps(fields.get("keywords", []))
-            cur.execute(
-                """
-                INSERT INTO msds
-                    (product_name, manufacturer, category, hazard_level,
-                     revision_date, pdf_path, pdf_url,
-                     description, keywords, content_html, ai_analyzed)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id
-                """,
-                (
-                    fields.get("product_name") or filename.replace(".pdf", ""),
-                    fields.get("manufacturer", "-"),
-                    fields.get("category", "기타"),
-                    fields.get("hazard_level", "경고"),
-                    fields.get("revision_date", str(date.today())),
-                    gcs_path,
-                    None,
-                    fields.get("description", ""),
-                    kw,
-                    content_html,
-                    ai_analyzed,
-                ),
-            )
-            new_id = cur.fetchone()["id"]
+            new_id = _insert_msds(cur, {
+                "product_name": fields.get("product_name") or filename.replace(".pdf", ""),
+                "manufacturer": fields.get("manufacturer", "-"),
+                "category": fields.get("category", "기타"),
+                "hazard_level": fields.get("hazard_level", "경고"),
+                "revision_date": fields.get("revision_date", str(date.today())),
+                "pdf_path": gcs_path,
+                "pdf_url": None,
+                "description": fields.get("description", ""),
+                "keywords": json.dumps(fields.get("keywords", [])),
+                "content_html": content_html,
+                "ai_analyzed": ai_analyzed,
+            })
             conn.commit()
 
             uploaded.append({
@@ -441,9 +525,9 @@ async def bulk_upload(
         except HTTPException as e:
             errors.append({"filename": filename, "error": e.detail})
         except Exception as e:
+            logger.error("bulk_upload 오류: %s", str(e))
             errors.append({"filename": filename, "error": str(e)})
 
-    conn.close()
     return {
         "message": f"{len(uploaded)}개 MSDS 등록 완료",
         "uploaded": uploaded,
@@ -466,20 +550,22 @@ async def import_gcs_folder(
     cur.execute("SELECT pdf_path FROM msds WHERE pdf_path IS NOT NULL")
     existing_paths = set(r["pdf_path"] for r in cur.fetchall())
 
-    blobs = await asyncio.to_thread(
-        lambda: list(gcs_iter_prefix_pdfs(prefix))
+    # 메타데이터만 먼저 수집 (바이트 미로드)
+    all_meta = await asyncio.to_thread(
+        lambda: list(gcs_list_prefix_pdfs(prefix))
     )
 
-    pending = [(b, f, d) for b, f, d in blobs if b not in existing_paths]
-    skipped = [{"filename": f} for b, f, d in blobs if b in existing_paths]
+    pending = [(b, f) for b, f in all_meta if b not in existing_paths]
+    skipped = [{"filename": f} for b, f in all_meta if b in existing_paths]
 
     uploaded = []
     errors = []
     sem = asyncio.Semaphore(CONCURRENCY)
 
-    async def process_one(blob_name: str, filename: str, pdf_bytes: bytes):
+    async def process_one(blob_name: str, filename: str):
         async with sem:
             try:
+                pdf_bytes = await asyncio.to_thread(gcs_download, blob_name)
                 result = await asyncio.to_thread(analyze, pdf_bytes)
                 fields = result.get("fields", {})
                 return {
@@ -494,39 +580,27 @@ async def import_gcs_folder(
             except Exception as e:
                 return {"blob_name": blob_name, "filename": filename, "error": str(e)}
 
-    results = await asyncio.gather(*[process_one(b, f, d) for b, f, d in pending])
+    results = await asyncio.gather(*[process_one(b, f) for b, f in pending])
 
     for r in results:
         if r.get("error"):
             errors.append({"filename": r["filename"], "error": r["error"]})
             continue
         fields = r["fields"]
-        kw = json.dumps(fields.get("keywords", []))
         try:
-            cur.execute(
-                """
-                INSERT INTO msds
-                    (product_name, manufacturer, category, hazard_level,
-                     revision_date, pdf_path, pdf_url,
-                     description, keywords, content_html, ai_analyzed)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id
-                """,
-                (
-                    fields.get("product_name") or r["filename"].replace(".pdf", ""),
-                    fields.get("manufacturer", "-"),
-                    fields.get("category", "기타"),
-                    fields.get("hazard_level", "경고"),
-                    fields.get("revision_date", str(date.today())),
-                    r["blob_name"],
-                    None,
-                    fields.get("description", ""),
-                    kw,
-                    r["content_html"],
-                    r["ai_analyzed"],
-                ),
-            )
-            new_id = cur.fetchone()["id"]
+            new_id = _insert_msds(cur, {
+                "product_name": fields.get("product_name") or r["filename"].replace(".pdf", ""),
+                "manufacturer": fields.get("manufacturer", "-"),
+                "category": fields.get("category", "기타"),
+                "hazard_level": fields.get("hazard_level", "경고"),
+                "revision_date": fields.get("revision_date", str(date.today())),
+                "pdf_path": r["blob_name"],
+                "pdf_url": None,
+                "description": fields.get("description", ""),
+                "keywords": json.dumps(fields.get("keywords", [])),
+                "content_html": r["content_html"],
+                "ai_analyzed": r["ai_analyzed"],
+            })
             conn.commit()
             uploaded.append({
                 "id": new_id,
@@ -536,9 +610,9 @@ async def import_gcs_folder(
                 "mode": r["mode"],
             })
         except Exception as e:
+            logger.error("import_gcs_folder INSERT 오류: %s", str(e))
             errors.append({"filename": r["filename"], "error": str(e)})
 
-    conn.close()
     return {
         "message": f"{len(uploaded)}개 MSDS 등록 완료 (건너뜀: {len(skipped)}개)",
         "uploaded": uploaded,
@@ -550,7 +624,7 @@ async def import_gcs_folder(
 # ---------- Google Drive 폴더 → GCS 업로드 + AI 분석 + DB 등록 ----------
 
 @router.post("/import-gdrive-folder", dependencies=[Depends(require_admin)])
-def import_gdrive_folder(
+async def import_gdrive_folder(
     gdrive_folder_url: str = Form(...),
     conn=Depends(get_connection),
 ):
@@ -560,44 +634,34 @@ def import_gdrive_folder(
     if not folder_id:
         raise HTTPException(status_code=400, detail="유효한 Google Drive 폴더 URL이 아닙니다.")
 
+    # 동기 generator를 스레드풀에서 실행
+    blobs = await asyncio.to_thread(lambda: list(iter_folder_pdfs(folder_id)))
+
     uploaded = []
     errors = []
     cur = conn.cursor()
 
-    for filename, pdf_bytes in iter_folder_pdfs(folder_id):
+    for filename, pdf_bytes in blobs:
         try:
-            gcs_path = gcs_upload_pdf(pdf_bytes, filename)
-
-            result = analyze(pdf_bytes)  # sync 함수이므로 to_thread 불필요
+            gcs_path = await asyncio.to_thread(gcs_upload_pdf, pdf_bytes, filename)
+            result = await asyncio.to_thread(analyze, pdf_bytes)
             fields = result.get("fields", {})
             content_html = result.get("content_html", "")
             ai_analyzed = 1 if result.get("mode") == "ai" else 0
 
-            kw = json.dumps(fields.get("keywords", []))
-            cur.execute(
-                """
-                INSERT INTO msds
-                    (product_name, manufacturer, category, hazard_level,
-                     revision_date, pdf_path, pdf_url,
-                     description, keywords, content_html, ai_analyzed)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s)
-                RETURNING id
-                """,
-                (
-                    fields.get("product_name") or filename.replace(".pdf", ""),
-                    fields.get("manufacturer", "-"),
-                    fields.get("category", "기타"),
-                    fields.get("hazard_level", "경고"),
-                    fields.get("revision_date", str(date.today())),
-                    gcs_path,
-                    None,
-                    fields.get("description", ""),
-                    kw,
-                    content_html,
-                    ai_analyzed,
-                ),
-            )
-            new_id = cur.fetchone()["id"]
+            new_id = _insert_msds(cur, {
+                "product_name": fields.get("product_name") or filename.replace(".pdf", ""),
+                "manufacturer": fields.get("manufacturer", "-"),
+                "category": fields.get("category", "기타"),
+                "hazard_level": fields.get("hazard_level", "경고"),
+                "revision_date": fields.get("revision_date", str(date.today())),
+                "pdf_path": gcs_path,
+                "pdf_url": None,
+                "description": fields.get("description", ""),
+                "keywords": json.dumps(fields.get("keywords", [])),
+                "content_html": content_html,
+                "ai_analyzed": ai_analyzed,
+            })
             conn.commit()
 
             uploaded.append({
@@ -608,9 +672,9 @@ def import_gdrive_folder(
                 "mode": result.get("mode", "manual"),
             })
         except Exception as e:
+            logger.error("import_gdrive_folder 오류: %s", str(e))
             errors.append({"filename": filename, "error": str(e)})
 
-    conn.close()
     return {
         "message": f"{len(uploaded)}개 MSDS 등록 완료",
         "uploaded": uploaded,
@@ -634,7 +698,6 @@ async def reanalyze_pending(conn=Depends(get_connection)):
     rows = cur.fetchall()
 
     if not rows:
-        conn.close()
         return {"message": "재분석할 항목이 없습니다.", "updated": [], "errors": []}
 
     sem = asyncio.Semaphore(CONCURRENCY)
@@ -649,7 +712,7 @@ async def reanalyze_pending(conn=Depends(get_connection)):
                 if pdf_path:
                     pdf_bytes = await asyncio.to_thread(gcs_download, pdf_path)
                 else:
-                    # H3: verify=False 제거
+                    _validate_url(pdf_url)
                     async with httpx.AsyncClient(timeout=60) as client:
                         r = await client.get(pdf_url)
                     if r.status_code != 200:
@@ -721,7 +784,6 @@ async def reanalyze_pending(conn=Depends(get_connection)):
             "mode": r["mode"],
         })
 
-    conn.close()
     return {
         "message": f"{len(updated)}개 재분석 완료",
         "updated": updated,

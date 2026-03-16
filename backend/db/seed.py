@@ -3,25 +3,21 @@
 실행: python db/seed.py
 """
 import json
+import logging
 import sys
 from pathlib import Path
-
-# Windows CP949 인코딩 충돌 방지
-if hasattr(sys.stdout, "reconfigure"):
-    sys.stdout.reconfigure(encoding="utf-8")
-if hasattr(sys.stderr, "reconfigure"):
-    sys.stderr.reconfigure(encoding="utf-8")
 
 # 프로젝트 루트를 경로에 추가
 sys.path.insert(0, str(Path(__file__).parent.parent))
 
-from db.database import get_db_connection, init_db
+from utils import configure_encoding
 
-CATEGORIES = [
-    "용접재료", "절단/연마", "윤활유/그리스", "연료(유류)", "시멘트류",
-    "콘크리트혼화제", "콘크리트 응집제", "박리제", "품질시험", "스프레이류",
-    "가스류", "요소수", "부동액", "경화제", "몰탈/접착제", "발파/폭약류", "기타"
-]
+configure_encoding()
+
+from constants import CATEGORIES
+from db.database import get_db_connection
+
+logger = logging.getLogger(__name__)
 
 MSDS_DATA = [
     {
@@ -128,7 +124,6 @@ MSDS_DATA = [
 
 
 def run():
-    init_db()
     conn = get_db_connection()
     cur = conn.cursor()
 
@@ -143,7 +138,7 @@ def run():
     cur.execute("SELECT COUNT(*) FROM msds")
     count = cur.fetchone()["count"]
     if count > 0:
-        print(f"이미 {count}개의 데이터가 존재합니다. seed를 건너뜁니다.")
+        logger.info("이미 %d개의 데이터가 존재합니다. seed를 건너뜁니다.", count)
     else:
         for item in MSDS_DATA:
             cur.execute(
@@ -159,13 +154,13 @@ def run():
                     item["pdf_url"], item["description"], item["keywords"],
                 ),
             )
-        print(f"{len(MSDS_DATA)}개의 MSDS 데이터 삽입 완료")
+        logger.info("%d개의 MSDS 데이터 삽입 완료", len(MSDS_DATA))
 
     conn.commit()
     cur.close()
     conn.close()
-    print(f"{len(CATEGORIES)}개의 카테고리 삽입 완료")
-    print("Seed 완료")
+    logger.info("%d개의 카테고리 삽입 완료", len(CATEGORIES))
+    logger.info("Seed 완료")
 
 
 if __name__ == "__main__":

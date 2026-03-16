@@ -3,8 +3,10 @@
  */
 
 const state = {
-    allMSDS: [],
-    filteredMSDS: [],
+    items: [],              // 현재 페이지 아이템
+    total: 0,               // 전체 건수 (서버 제공)
+    page: 1,
+    page_size: 20,
     selectedCategories: new Set(),
     selectedHazards: new Set(),
     selectedManufacturers: new Set(),
@@ -25,22 +27,24 @@ document.addEventListener('DOMContentLoaded', async () => {
 async function initializeApp() {
     showLoading(true);
 
-    const [stats, msdsData, categories, hazardLevels, manufacturers] = await Promise.all([
+    const [stats, result, categories, hazardLevels, manufacturers] = await Promise.all([
         api.getStats(),
-        api.getMSDS(),
+        api.getMSDS({ page: 1, page_size: state.page_size }),
         api.getCategories(),
         api.getHazardLevels(),
         api.getManufacturers(),
     ]);
 
-    state.allMSDS = msdsData;
-    state.filteredMSDS = msdsData;
+    state.items = result.items;
+    state.total = result.total;
+    state.page  = result.page;
 
     document.getElementById('totalCount').textContent = stats.total;
     document.getElementById('categoryCount').textContent = stats.categoryCount;
 
     initializeFilters(categories, hazardLevels, manufacturers);
     renderCards();
+    renderPagination();
     updateStats();
     registerEventListeners();
 
@@ -50,6 +54,29 @@ async function initializeApp() {
     const urlParams = new URLSearchParams(window.location.search);
     const urlId = urlParams.get('id');
     if (urlId) openPDFModal(parseInt(urlId, 10));
+}
+
+// ========== 서버 페치 + 렌더 ==========
+async function fetchAndRender(page = 1) {
+    showLoading(true);
+    try {
+        const q = state.searchQuery || undefined;
+        // 다중 선택 시 첫 번째 값만 서버로 전달
+        const category     = state.selectedCategories.size    === 1 ? [...state.selectedCategories][0]    : undefined;
+        const hazard       = state.selectedHazards.size       === 1 ? [...state.selectedHazards][0]       : undefined;
+        const manufacturer = state.selectedManufacturers.size === 1 ? [...state.selectedManufacturers][0] : undefined;
+
+        const result = await api.getMSDS({ q, category, hazard, manufacturer, page, page_size: state.page_size });
+        state.items = result.items;
+        state.total = result.total;
+        state.page  = result.page;
+
+        renderCards();
+        renderPagination();
+        updateStats();
+    } finally {
+        showLoading(false);
+    }
 }
 
 // ========== 로딩 / 에러 ==========
@@ -154,16 +181,7 @@ function handleFilterChange(type, value, checked) {
 }
 
 function applyFilters() {
-    let f = [...state.allMSDS];
-    if (state.searchQuery) {
-        f = f.filter(m => [m.product_name, m.manufacturer, m.description, ...(m.keywords||[])].join(' ').toLowerCase().includes(state.searchQuery));
-    }
-    if (state.selectedCategories.size)    f = f.filter(m => state.selectedCategories.has(m.category));
-    if (state.selectedHazards.size)       f = f.filter(m => state.selectedHazards.has(m.hazard_level));
-    if (state.selectedManufacturers.size) f = f.filter(m => state.selectedManufacturers.has(m.manufacturer));
-    state.filteredMSDS = f;
-    renderCards();
-    updateStats();
+    fetchAndRender(1);
 }
 
 function resetFilters() {
@@ -188,14 +206,14 @@ function renderCards() {
     const container = document.getElementById('cardsContainer');
     const noResults = document.getElementById('noResults');
 
-    if (state.filteredMSDS.length === 0) {
+    if (state.items.length === 0) {
         container.innerHTML = '';
         noResults.style.display = 'block';
         return;
     }
     noResults.style.display = 'none';
 
-    container.innerHTML = state.filteredMSDS.map(m => {
+    container.innerHTML = state.items.map(m => {
         const name    = escapeHtml(m.product_name);
         const hazard  = escapeHtml(m.hazard_level);
         const mfr     = escapeHtml(m.manufacturer);
@@ -228,39 +246,72 @@ function renderCards() {
 function updateStats() {
     const info = document.getElementById('searchResultsInfo');
     const active = state.searchQuery || state.selectedCategories.size || state.selectedHazards.size || state.selectedManufacturers.size;
-    info.innerHTML = active ? `<i class="fas fa-info-circle"></i> <strong>${state.filteredMSDS.length}개</strong>의 결과 (전체 ${state.allMSDS.length}개)` : '';
+    info.innerHTML = active ? `<i class="fas fa-info-circle"></i> <strong>${state.total}개</strong>의 결과` : '';
+}
+
+// ========== 페이지네이션 ==========
+function renderPagination() {
+    const container = document.getElementById('pagination');
+    if (!container) return;
+    const totalPages = Math.ceil(state.total / state.page_size);
+    if (totalPages <= 1) { container.innerHTML = ''; return; }
+
+    const buttons = [];
+    if (state.page > 1) {
+        buttons.push(`<button class="page-btn" data-page="${state.page - 1}"><i class="fas fa-chevron-left"></i> 이전</button>`);
+    }
+    const start = Math.max(1, state.page - 2);
+    const end   = Math.min(totalPages, state.page + 2);
+    for (let i = start; i <= end; i++) {
+        buttons.push(`<button class="page-btn${i === state.page ? ' active' : ''}" data-page="${i}">${i}</button>`);
+    }
+    if (state.page < totalPages) {
+        buttons.push(`<button class="page-btn" data-page="${state.page + 1}">다음 <i class="fas fa-chevron-right"></i></button>`);
+    }
+    container.innerHTML = buttons.join('');
+    container.querySelectorAll('.page-btn').forEach(btn => {
+        btn.addEventListener('click', () => fetchAndRender(parseInt(btn.dataset.page, 10)));
+    });
 }
 
 // ========== PDF 상세 모달 ==========
-function openPDFModal(id) {
-    const m = state.allMSDS.find(x => x.id === id);
-    if (!m) return;
-
-    document.getElementById('modalTitle').textContent = m.product_name;
-    document.getElementById('msdsInfo').innerHTML = `
-        <div class="msds-info-grid">
-            <div class="info-item"><i class="fas fa-industry"></i><strong>제조사:</strong> ${escapeHtml(m.manufacturer)}</div>
-            <div class="info-item"><i class="fas fa-tag"></i><strong>카테고리:</strong> ${escapeHtml(m.category)}</div>
-            <div class="info-item"><i class="fas fa-exclamation-triangle"></i><strong>위험등급:</strong>
-                <span class="hazard-badge ${escapeHtml(m.hazard_level)}">${escapeHtml(m.hazard_level)}</span>
-            </div>
-            <div class="info-item"><i class="fas fa-calendar"></i><strong>개정일:</strong> ${escapeHtml(m.revision_date)}</div>
-            ${m.ai_analyzed ? '<div class="info-item"><i class="fas fa-robot"></i><strong>분석:</strong> AI 자동 분석</div>' : ''}
-        </div>
-        ${m.description ? `<p style="margin-top:10px;"><strong>설명:</strong> ${escapeHtml(m.description)}</p>` : ''}
-    `;
-
-    const contentEl = document.getElementById('msdsContentHtml');
-    contentEl.innerHTML = m.content_html
-        ? DOMPurify.sanitize(m.content_html)
-        : '<p class="no-content">추출된 내용이 없습니다. 원본 PDF 탭을 확인하세요.</p>';
-
-    const pdfUrl = (m.pdf_path || m.pdf_url) ? api.downloadUrl(m.id) : '';
-    document.getElementById('pdfViewer').src = pdfUrl;
-    document.getElementById('downloadBtn').href = api.downloadUrl(m.id);
-
+async function openPDFModal(id) {
     document.getElementById('pdfModal').classList.add('active');
     document.body.style.overflow = 'hidden';
+    document.getElementById('modalTitle').textContent = '로딩 중...';
+    document.getElementById('msdsInfo').innerHTML = '';
+    document.getElementById('msdsContentHtml').innerHTML = '';
+    document.getElementById('pdfViewer').src = '';
+
+    try {
+        const m = await api.getMSDSById(id);
+
+        document.getElementById('modalTitle').textContent = m.product_name;
+        document.getElementById('msdsInfo').innerHTML = `
+            <div class="msds-info-grid">
+                <div class="info-item"><i class="fas fa-industry"></i><strong>제조사:</strong> ${escapeHtml(m.manufacturer)}</div>
+                <div class="info-item"><i class="fas fa-tag"></i><strong>카테고리:</strong> ${escapeHtml(m.category)}</div>
+                <div class="info-item"><i class="fas fa-exclamation-triangle"></i><strong>위험등급:</strong>
+                    <span class="hazard-badge ${escapeHtml(m.hazard_level)}">${escapeHtml(m.hazard_level)}</span>
+                </div>
+                <div class="info-item"><i class="fas fa-calendar"></i><strong>개정일:</strong> ${escapeHtml(m.revision_date)}</div>
+                ${m.ai_analyzed ? '<div class="info-item"><i class="fas fa-robot"></i><strong>분석:</strong> AI 자동 분석</div>' : ''}
+            </div>
+            ${m.description ? `<p style="margin-top:10px;"><strong>설명:</strong> ${escapeHtml(m.description)}</p>` : ''}
+        `;
+
+        const contentEl = document.getElementById('msdsContentHtml');
+        contentEl.innerHTML = m.content_html
+            ? DOMPurify.sanitize(m.content_html)
+            : '<p class="no-content">추출된 내용이 없습니다. 원본 PDF 탭을 확인하세요.</p>';
+
+        const pdfUrl = (m.pdf_path || m.pdf_url) ? api.downloadUrl(m.id) : '';
+        document.getElementById('pdfViewer').src = pdfUrl;
+        document.getElementById('downloadBtn').href = api.downloadUrl(m.id);
+    } catch (err) {
+        document.getElementById('modalTitle').textContent = '오류';
+        document.getElementById('msdsInfo').innerHTML = `<p style="color:#dc2626;">상세 정보를 불러오지 못했습니다: ${escapeHtml(err.message)}</p>`;
+    }
 }
 
 function closeModal() {

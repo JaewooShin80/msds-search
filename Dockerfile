@@ -6,16 +6,30 @@ ENV PYTHONUTF8=1
 ENV PYTHONIOENCODING=utf-8
 ENV PORT=8080
 
-# 3. 작업 디렉토리 설정
+# 3. non-root 사용자 생성
+RUN adduser --disabled-password --gecos '' appuser
+
+# 4. 작업 디렉토리 설정
 WORKDIR /app
 
-# 4. 필수 라이브러리 설치 (경로: backend/requirements.txt)
+# 5. 의존성 설치 (캐시 레이어 분리)
 COPY backend/requirements.txt .
 RUN pip install --no-cache-dir -r requirements.txt
 
-# 5. 소스 코드 복사 (전체 복사)
-COPY . .
+# 6. 소스 코드 복사 (분리 복사로 캐시 효율화)
+COPY backend/ ./backend/
+COPY frontend/ ./frontend/
 
-# 6. 실행 (uvicorn)
+# 7. non-root 사용자로 전환
+USER appuser
+
+# 8. 포트 노출
+EXPOSE 8080
+
+# 9. 헬스체크
+HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
+    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health')" || exit 1
+
+# 10. 실행 (exec-form으로 시그널 정상 전달)
 WORKDIR /app/backend
-CMD ["sh", "-c", "uvicorn main:app --host 0.0.0.0 --port ${PORT}"]
+CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8080"]

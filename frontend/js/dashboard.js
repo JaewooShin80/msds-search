@@ -10,7 +10,7 @@ document.addEventListener('DOMContentLoaded', async () => {
         document.querySelector('.dashboard-main').innerHTML =
             `<div style="text-align:center;padding:4rem;color:#dc2626;">
                 <i class="fas fa-exclamation-circle fa-2x"></i>
-                <p style="margin-top:1rem;">데이터를 불러오지 못했습니다: ${err.message}</p>
+                <p style="margin-top:1rem;">데이터를 불러오지 못했습니다: ${escapeHtml(err.message)}</p>
              </div>`;
     }
 });
@@ -89,9 +89,9 @@ function renderRecentTable(recent) {
     const tbody = document.getElementById('recentTable');
     tbody.innerHTML = recent.map(r => `
         <tr>
-            <td><a href="/?id=${r.id}">${r.product_name}</a></td>
-            <td>${r.category}</td>
-            <td><span class="hazard-badge ${r.hazard_level}">${r.hazard_level}</span></td>
+            <td><a href="/?id=${r.id}">${escapeHtml(r.product_name)}</a></td>
+            <td>${escapeHtml(r.category)}</td>
+            <td><span class="hazard-badge ${escapeHtml(r.hazard_level)}">${escapeHtml(r.hazard_level)}</span></td>
             <td>${r.created_at?.slice(0, 16).replace('T', ' ') ?? '-'}</td>
         </tr>
     `).join('');

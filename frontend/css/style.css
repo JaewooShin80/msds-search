@@ -1043,27 +1043,12 @@ body {
 }
 .bulk-file-list {
     list-style: none;
-    padding: 0;
+    padding: 0.75rem 1rem;
     margin: 0.75rem 0 0;
     max-height: 300px;
     overflow-y: auto;
-}
-.bulk-file-list li {
-    padding: 0.4rem 0.5rem;
-    border-bottom: 1px solid #f1f5f9;
-    font-size: 0.88rem;
-    display: flex;
-    align-items: center;
-    gap: 0.5rem;
-}
-
-.bulk-file-list {
-    margin-top: 1rem;
     border: 1px solid #e2e8f0;
     border-radius: 8px;
-    padding: 0.75rem 1rem;
-    max-height: 200px;
-    overflow-y: auto;
 }
 .bulk-file-list h4 {
     margin: 0 0 0.5rem;
@@ -1076,12 +1061,12 @@ body {
     margin: 0;
 }
 .bulk-file-list li {
-    padding: 0.3rem 0;
-    font-size: 0.85rem;
+    padding: 0.35rem 0.25rem;
+    border-bottom: 1px solid #f1f5f9;
+    font-size: 0.86rem;
     display: flex;
     align-items: center;
-    gap: 0.4rem;
-    border-bottom: 1px solid #f1f5f9;
+    gap: 0.45rem;
 }
 .bulk-file-list li:last-child { border-bottom: none; }
 
@@ -1170,6 +1155,39 @@ body {
 .msds-form .form-group { margin-bottom: 1rem; }
 .required { color: #dc2626; }
 @media (max-width: 600px) { .msds-form .form-row { grid-template-columns: 1fr; } }
+
+/* ===================================================
+   페이지네이션
+=================================================== */
+.pagination {
+    display: flex;
+    justify-content: center;
+    align-items: center;
+    gap: 0.4rem;
+    margin: 1.5rem 0;
+    flex-wrap: wrap;
+}
+.page-btn {
+    padding: 0.4rem 0.75rem;
+    border: 1.5px solid #e2e8f0;
+    border-radius: 6px;
+    background: #fff;
+    color: #475569;
+    font-size: 0.875rem;
+    cursor: pointer;
+    transition: all 0.15s;
+}
+.page-btn:hover {
+    background: #eff6ff;
+    border-color: #3b82f6;
+    color: #1e40af;
+}
+.page-btn.active {
+    background: #1e3a8a;
+    border-color: #1e3a8a;
+    color: #fff;
+    cursor: default;
+}
 
 /* ===================================================
    대시보드

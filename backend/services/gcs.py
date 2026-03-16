@@ -6,7 +6,7 @@ import os
 import uuid
 from pathlib import Path
 
-from typing import Optional
+from typing import Generator, Optional, Tuple
 from google.cloud import storage
 
 BUCKET_NAME = os.getenv("GCS_BUCKET", "msdsdata")
@@ -45,6 +45,12 @@ def download_bytes(gcs_path: str) -> bytes:
     return blob.download_as_bytes()
 
 
+def download_stream(gcs_path: str):
+    """GCS에서 파일을 스트리밍 방식으로 다운로드 (open)"""
+    blob = _get_bucket().blob(gcs_path)
+    return blob.open("rb")
+
+
 def get_public_url(gcs_path: str) -> str:
     """GCS 객체의 공개 URL 반환 (버킷이 공개 설정된 경우)"""
     return f"https://storage.googleapis.com/{BUCKET_NAME}/{gcs_path}"
@@ -63,10 +69,9 @@ def exists(gcs_path: str) -> bool:
     return blob.exists()
 
 
-def iter_prefix_pdfs(prefix: str):
-    """GCS prefix 내 PDF 파일을 순회하며 (blob_name, 파일명, 바이트) 반환"""
-    from pathlib import Path as _Path
+def list_prefix_pdfs(prefix: str) -> Generator[Tuple[str, str], None, None]:
+    """GCS prefix 내 PDF 파일을 순회하며 (blob_name, 파일명) 메타정보만 반환.
+    바이트 데이터는 download_bytes()로 별도 취득."""
     for blob in _get_client().list_blobs(BUCKET_NAME, prefix=prefix):
         if blob.name.lower().endswith(".pdf"):
-            data = blob.download_as_bytes()
-            yield blob.name, _Path(blob.name).name, data
+            yield blob.name, Path(blob.name).name

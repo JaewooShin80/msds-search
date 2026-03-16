@@ -54,12 +54,14 @@ const api = {
     getDashboard:    () => request(`${BASE}/dashboard`),
 
     // ===== MSDS 조회 =====
-    getMSDS({ q, category, hazard, manufacturer } = {}) {
+    getMSDS({ q, category, hazard, manufacturer, page, page_size } = {}) {
         const params = new URLSearchParams();
         if (q)            params.set('q', q);
         if (category)     params.set('category', category);
         if (hazard)       params.set('hazard', hazard);
         if (manufacturer) params.set('manufacturer', manufacturer);
+        if (page)         params.set('page', page);
+        if (page_size)    params.set('page_size', page_size);
         const qs = params.toString();
         return request(`${BASE}/msds${qs ? '?' + qs : ''}`);
     },
