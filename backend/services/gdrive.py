@@ -4,8 +4,11 @@ Google Drive 유틸리티
 - Cloud Run 서비스 계정 인증 사용
 """
 import io
+import logging
 import re
 from typing import Generator, Optional
+
+logger = logging.getLogger(__name__)
 
 _service = None
 
@@ -62,6 +65,7 @@ def list_files(folder_id: str) -> list[dict]:
         if not page_token:
             break
 
+    logger.info("Drive 폴더 파일 목록 조회 완료: folder_id=%s, 파일 수=%d", folder_id, len(results))
     return results
 
 
@@ -78,7 +82,9 @@ def download_file(file_id: str) -> bytes:
     while not done:
         _, done = downloader.next_chunk()
 
-    return buffer.getvalue()
+    data = buffer.getvalue()
+    logger.info("Drive 파일 다운로드 완료: file_id=%s, 크기=%d bytes", file_id, len(data))
+    return data
 
 
 def iter_folder_pdfs(folder_id: str) -> Generator[tuple[str, bytes], None, None]:

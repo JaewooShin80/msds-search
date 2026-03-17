@@ -50,9 +50,14 @@ app = FastAPI(title="MSDS 검색 시스템", version="1.0.0", lifespan=lifespan)
 app.state.limiter = limiter
 app.add_exception_handler(RateLimitExceeded, _rate_limit_exceeded_handler)
 
-# CORS — 환경변수로 허용 오리진 제한
-_raw_origins = os.getenv("ALLOWED_ORIGINS", "*")
-_origins = [o.strip() for o in _raw_origins.split(",") if o.strip()] if _raw_origins != "*" else ["*"]
+# CORS — 환경변수로 허용 오리진 제한 (미설정 시 cross-origin 차단)
+_raw_origins = os.getenv("ALLOWED_ORIGINS", "")
+if _raw_origins == "*":
+    _origins = ["*"]
+elif _raw_origins:
+    _origins = [o.strip() for o in _raw_origins.split(",") if o.strip()]
+else:
+    _origins = []  # same-origin only (no cross-origin allowed)
 
 app.add_middleware(
     CORSMiddleware,
@@ -83,6 +88,11 @@ async def add_security_headers(request: Request, call_next):
 # ========== 헬스체크 ==========
 @app.get("/api/health")
 def health_check():
+    return {"status": "ok"}
+
+
+@app.get("/api/health/ready")
+def readiness_check():
     from db.database import get_db_connection
     try:
         conn = get_db_connection()

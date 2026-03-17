@@ -1070,6 +1070,13 @@ body {
     .modal-viewer-area .tab-pane {
         height: 300px;
     }
+    /* 모바일: HTML 미리보기만 표시, PDF iframe 숨김 */
+    .modal-viewer-area #tabPdf {
+        display: none;
+    }
+    .modal-viewer-area #tabContent {
+        height: 50vh;
+    }
 }
 
 /* ===================================================

@@ -41,10 +41,11 @@ def get_hazard_levels(conn=Depends(get_connection)):
 
 
 @router.get("/manufacturers")
-def get_manufacturers(conn=Depends(get_connection)):
+def get_manufacturers(limit: int = 50, conn=Depends(get_connection)):
     cur = conn.cursor()
     cur.execute(
-        "SELECT manufacturer AS name, COUNT(*) AS count FROM msds GROUP BY manufacturer ORDER BY manufacturer"
+        "SELECT manufacturer AS name, COUNT(*) AS count FROM msds GROUP BY manufacturer ORDER BY manufacturer LIMIT %s",
+        (min(max(limit, 1), 200),),
     )
     rows = cur.fetchall()
     return [dict(r) for r in rows]

@@ -6,8 +6,9 @@ ENV PYTHONUTF8=1
 ENV PYTHONIOENCODING=utf-8
 ENV PORT=8080
 
-# 3. non-root 사용자 생성
-RUN adduser --disabled-password --gecos '' appuser
+# 3. 시스템 패키지 설치 + non-root 사용자 생성
+RUN apt-get update && apt-get install -y --no-install-recommends curl && rm -rf /var/lib/apt/lists/* \
+    && adduser --disabled-password --gecos '' appuser
 
 # 4. 작업 디렉토리 설정
 WORKDIR /app
@@ -29,9 +30,9 @@ USER appuser
 # 9. 포트 노출
 EXPOSE 8080
 
-# 10. 헬스체크
-HEALTHCHECK --interval=30s --timeout=10s --start-period=15s --retries=3 \
-    CMD python -c "import urllib.request; urllib.request.urlopen('http://localhost:8080/api/health')" || exit 1
+# 10. 헬스체크 (liveness — DB 비의존)
+HEALTHCHECK --interval=30s --timeout=5s --start-period=15s --retries=3 \
+    CMD curl -f http://localhost:8080/api/health || exit 1
 
 # 11. 실행 (exec-form으로 시그널 정상 전달)
 WORKDIR /app/backend

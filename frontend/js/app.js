@@ -97,7 +97,18 @@ function showLoading(show) {
 function showError(msg) {
     showLoading(false);
     const c = document.getElementById('cardsContainer');
-    if (c) c.innerHTML = `<div style="grid-column:1/-1;text-align:center;padding:3rem;color:#dc2626;"><i class="fas fa-exclamation-circle fa-2x"></i><p style="margin-top:1rem;">${msg}</p></div>`;
+    if (!c) return;
+    c.innerHTML = '';
+    const wrapper = document.createElement('div');
+    wrapper.style.cssText = 'grid-column:1/-1;text-align:center;padding:3rem;color:#dc2626;';
+    const icon = document.createElement('i');
+    icon.className = 'fas fa-exclamation-circle fa-2x';
+    const p = document.createElement('p');
+    p.style.marginTop = '1rem';
+    p.textContent = msg;
+    wrapper.appendChild(icon);
+    wrapper.appendChild(p);
+    c.appendChild(wrapper);
 }
 
 // ========== 필터 초기화 ==========
@@ -194,6 +205,20 @@ function registerEventListeners() {
 
     ['closeModal', 'closeModalBtn'].forEach(id => document.getElementById(id).addEventListener('click', closeModal));
     document.querySelector('#pdfModal .modal-overlay').addEventListener('click', closeModal);
+
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape' && document.getElementById('pdfModal').classList.contains('active')) {
+            closeModal();
+        }
+    });
+
+    const paginationEl = document.getElementById('pagination');
+    if (paginationEl) {
+        paginationEl.addEventListener('click', (e) => {
+            const btn = e.target.closest('.page-btn');
+            if (btn) fetchAndRender(parseInt(btn.dataset.page, 10));
+        });
+    }
 }
 
 // ========== 탭 활성화 ==========
@@ -301,9 +326,6 @@ function renderPagination() {
         buttons.push(`<button class="page-btn" data-page="${state.page + 1}">다음 <i class="fas fa-chevron-right"></i></button>`);
     }
     container.innerHTML = buttons.join('');
-    container.querySelectorAll('.page-btn').forEach(btn => {
-        btn.addEventListener('click', () => fetchAndRender(parseInt(btn.dataset.page, 10)));
-    });
 }
 
 // ========== PDF 상세 모달 ==========
@@ -338,7 +360,12 @@ async function openPDFModal(id) {
             : '<p class="no-content">추출된 내용이 없습니다. 원본 PDF 탭을 확인하세요.</p>';
 
         const pdfUrl = (m.pdf_path || m.pdf_url) ? api.downloadUrl(m.id) : '';
-        document.getElementById('pdfViewer').src = pdfUrl;
+        const pdfViewer = document.getElementById('pdfViewer');
+        if (pdfUrl && window.innerWidth > 767) {
+            pdfViewer.src = pdfUrl;
+        } else {
+            pdfViewer.removeAttribute('src');
+        }
         document.getElementById('downloadBtn').href = api.downloadUrl(m.id);
     } catch (err) {
         document.getElementById('modalTitle').textContent = '오류';

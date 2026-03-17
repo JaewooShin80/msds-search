@@ -2,12 +2,15 @@
 Google Cloud Storage 유틸리티
 - PDF 업로드 / 다운로드 / 공개 URL 생성
 """
+import logging
 import os
 import uuid
 from pathlib import Path
 
 from typing import Generator, Optional, Tuple
 from google.cloud import storage
+
+logger = logging.getLogger(__name__)
 
 BUCKET_NAME = os.getenv("GCS_BUCKET", "msdsdata")
 
@@ -29,6 +32,7 @@ def upload_bytes(data: bytes, destination_path: str, content_type: str = "applic
     """바이트 데이터를 GCS에 업로드하고 GCS 경로를 반환"""
     blob = _get_bucket().blob(destination_path)
     blob.upload_from_string(data, content_type=content_type)
+    logger.info("GCS 업로드 완료: %s", destination_path)
     return destination_path
 
 
@@ -36,11 +40,13 @@ def upload_pdf(pdf_bytes: bytes, original_filename: str = "") -> str:
     """PDF 바이트를 고유 이름으로 GCS에 업로드, GCS 경로 반환"""
     ext = Path(original_filename).suffix if original_filename else ".pdf"
     gcs_path = f"pdfs/{uuid.uuid4().hex}{ext}"
+    logger.info("PDF 업로드: %s → %s", original_filename, gcs_path)
     return upload_bytes(pdf_bytes, gcs_path)
 
 
 def download_bytes(gcs_path: str) -> bytes:
     """GCS에서 파일을 다운로드하여 바이트로 반환"""
+    logger.info("GCS 다운로드: %s", gcs_path)
     blob = _get_bucket().blob(gcs_path)
     return blob.download_as_bytes()
 

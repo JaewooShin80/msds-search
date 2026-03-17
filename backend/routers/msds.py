@@ -16,6 +16,7 @@ from typing import List
 from fastapi.responses import FileResponse, StreamingResponse
 
 from auth import require_admin
+from constants import HAZARD_LEVELS
 from db.database import get_connection
 from services.analyzer import analyze
 from services.gcs import (
@@ -35,6 +36,11 @@ MAX_PDF_SIZE = 50 * 1024 * 1024  # 50MB
 
 
 # ---------- 헬퍼 ----------
+
+async def _db(fn):
+    """Run a synchronous DB operation in a thread to avoid blocking the event loop."""
+    return await asyncio.to_thread(fn)
+
 
 def row_to_dict(row) -> dict:
     d = dict(row)
@@ -69,6 +75,9 @@ def _validate_url(url: str) -> None:
     # 사설 IP 주소 차단
     try:
         ip = ipaddress.ip_address(hostname)
+        # IPv6-mapped IPv4 (e.g. ::ffff:127.0.0.1) → 실제 IPv4로 변환 후 재검증
+        if hasattr(ip, 'ipv4_mapped') and ip.ipv4_mapped:
+            ip = ip.ipv4_mapped
         if ip.is_private or ip.is_loopback or ip.is_link_local or ip.is_reserved:
             raise HTTPException(status_code=400, detail="사설 IP 주소로의 요청은 허용되지 않습니다.")
     except ValueError:
@@ -266,9 +275,11 @@ def get_one(msds_id: int, conn=Depends(get_connection)):
 @router.get("/{msds_id}/download")
 async def download(msds_id: int, conn=Depends(get_connection)):
     """GCS 파일 우선, 로컬 파일 차선, 외부 URL 최후"""
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM msds WHERE id = %s", (msds_id,))
-    row = cur.fetchone()
+    def _query():
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM msds WHERE id = %s", (msds_id,))
+        return cur.fetchone()
+    row = await _db(_query)
     if not row:
         raise HTTPException(status_code=404, detail="MSDS를 찾을 수 없습니다.")
 
@@ -353,28 +364,39 @@ async def create(
     if pdf_url:
         _validate_url(pdf_url)
 
+    if hazard_level not in HAZARD_LEVELS:
+        raise HTTPException(status_code=422, detail=f"hazard_level은 {HAZARD_LEVELS} 중 하나여야 합니다.")
+
+    try:
+        from datetime import datetime as _dt
+        _dt.strptime(revision_date, "%Y-%m-%d")
+    except ValueError:
+        raise HTTPException(status_code=422, detail="revision_date는 YYYY-MM-DD 형식이어야 합니다.")
+
     try:
         kw = json.dumps(json.loads(keywords) if keywords else [])
     except json.JSONDecodeError:
         raise HTTPException(status_code=422, detail="keywords는 유효한 JSON 배열이어야 합니다.")
 
-    cur = conn.cursor()
-    new_id = _insert_msds(cur, {
-        "product_name": product_name,
-        "manufacturer": manufacturer,
-        "category": category,
-        "hazard_level": hazard_level,
-        "revision_date": revision_date,
-        "pdf_path": pdf_path,
-        "pdf_url": pdf_url,
-        "description": description,
-        "keywords": kw,
-        "content_html": content_html,
-        "ai_analyzed": ai_analyzed,
-    })
-    conn.commit()
-    cur.execute("SELECT * FROM msds WHERE id = %s", (new_id,))
-    row = cur.fetchone()
+    def _do_insert():
+        cur = conn.cursor()
+        new_id = _insert_msds(cur, {
+            "product_name": product_name,
+            "manufacturer": manufacturer,
+            "category": category,
+            "hazard_level": hazard_level,
+            "revision_date": revision_date,
+            "pdf_path": pdf_path,
+            "pdf_url": pdf_url,
+            "description": description,
+            "keywords": kw,
+            "content_html": content_html,
+            "ai_analyzed": ai_analyzed,
+        })
+        conn.commit()
+        cur.execute("SELECT * FROM msds WHERE id = %s", (new_id,))
+        return cur.fetchone()
+    row = await _db(_do_insert)
     return row_to_dict(row)
 
 
@@ -396,9 +418,11 @@ async def update(
     pdf:           Optional[UploadFile] = File(None),
     conn=Depends(get_connection),
 ):
-    cur = conn.cursor()
-    cur.execute("SELECT * FROM msds WHERE id = %s", (msds_id,))
-    existing = cur.fetchone()
+    def _fetch_existing():
+        cur = conn.cursor()
+        cur.execute("SELECT * FROM msds WHERE id = %s", (msds_id,))
+        return cur.fetchone()
+    existing = await _db(_fetch_existing)
     if not existing:
         raise HTTPException(status_code=404, detail="MSDS를 찾을 수 없습니다.")
 
@@ -423,44 +447,57 @@ async def update(
     if pdf_url:
         _validate_url(pdf_url)
 
+    if hazard_level is not None and hazard_level not in HAZARD_LEVELS:
+        raise HTTPException(status_code=422, detail=f"hazard_level은 {HAZARD_LEVELS} 중 하나여야 합니다.")
+
+    if revision_date is not None:
+        try:
+            from datetime import datetime as _dt
+            _dt.strptime(revision_date, "%Y-%m-%d")
+        except ValueError:
+            raise HTTPException(status_code=422, detail="revision_date는 YYYY-MM-DD 형식이어야 합니다.")
+
     try:
-        kw = json.dumps(json.loads(keywords)) if keywords else e["keywords"]
+        kw = json.dumps(json.loads(keywords)) if keywords is not None else e["keywords"]
     except json.JSONDecodeError:
         raise HTTPException(status_code=422, detail="keywords는 유효한 JSON 배열이어야 합니다.")
 
-    cur.execute(
-        """
-        UPDATE msds SET
-            product_name  = %s,
-            manufacturer  = %s,
-            category      = %s,
-            hazard_level  = %s,
-            revision_date = %s,
-            pdf_path      = %s,
-            pdf_url       = %s,
-            description   = %s,
-            keywords      = %s,
-            content_html  = %s,
-            updated_at    = CURRENT_TIMESTAMP
-        WHERE id = %s
-        """,
-        (
-            product_name  if product_name  is not None else e["product_name"],
-            manufacturer  if manufacturer  is not None else e["manufacturer"],
-            category      if category      is not None else e["category"],
-            hazard_level  if hazard_level  is not None else e["hazard_level"],
-            revision_date if revision_date is not None else e["revision_date"],
-            pdf_path,
-            pdf_url       if pdf_url       is not None else e["pdf_url"],
-            description   if description   is not None else e["description"],
-            kw,
-            content_html  if content_html  is not None else e["content_html"],
-            msds_id,
-        ),
-    )
-    conn.commit()
-    cur.execute("SELECT * FROM msds WHERE id = %s", (msds_id,))
-    row = cur.fetchone()
+    def _do_update():
+        cur = conn.cursor()
+        cur.execute(
+            """
+            UPDATE msds SET
+                product_name  = %s,
+                manufacturer  = %s,
+                category      = %s,
+                hazard_level  = %s,
+                revision_date = %s,
+                pdf_path      = %s,
+                pdf_url       = %s,
+                description   = %s,
+                keywords      = %s,
+                content_html  = %s,
+                updated_at    = CURRENT_TIMESTAMP
+            WHERE id = %s
+            """,
+            (
+                product_name  if product_name  is not None else e["product_name"],
+                manufacturer  if manufacturer  is not None else e["manufacturer"],
+                category      if category      is not None else e["category"],
+                hazard_level  if hazard_level  is not None else e["hazard_level"],
+                revision_date if revision_date is not None else e["revision_date"],
+                pdf_path,
+                pdf_url       if pdf_url       is not None else e["pdf_url"],
+                description   if description   is not None else e["description"],
+                kw,
+                content_html  if content_html  is not None else e["content_html"],
+                msds_id,
+            ),
+        )
+        conn.commit()
+        cur.execute("SELECT * FROM msds WHERE id = %s", (msds_id,))
+        return cur.fetchone()
+    row = await _db(_do_update)
     return row_to_dict(row)
 
 
@@ -486,7 +523,6 @@ async def bulk_upload(
 ):
     uploaded = []
     errors = []
-    cur = conn.cursor()
 
     for pdf in pdfs:
         filename = pdf.filename or "unknown.pdf"
@@ -500,20 +536,23 @@ async def bulk_upload(
             content_html = result.get("content_html", "")
             ai_analyzed = 1 if result.get("mode") == "ai" else 0
 
-            new_id = _insert_msds(cur, {
-                "product_name": fields.get("product_name") or filename.replace(".pdf", ""),
-                "manufacturer": fields.get("manufacturer", "-"),
-                "category": fields.get("category", "기타"),
-                "hazard_level": fields.get("hazard_level", "경고"),
-                "revision_date": fields.get("revision_date", str(date.today())),
-                "pdf_path": gcs_path,
-                "pdf_url": None,
-                "description": fields.get("description", ""),
-                "keywords": json.dumps(fields.get("keywords", [])),
-                "content_html": content_html,
-                "ai_analyzed": ai_analyzed,
-            })
-            conn.commit()
+            def _do_insert(f=fields, g=gcs_path, fn=filename, ch=content_html, ai=ai_analyzed):
+                cur = conn.cursor()
+                return _insert_msds(cur, {
+                    "product_name": f.get("product_name") or fn.replace(".pdf", ""),
+                    "manufacturer": f.get("manufacturer", "-"),
+                    "category": f.get("category", "기타"),
+                    "hazard_level": f.get("hazard_level", "경고"),
+                    "revision_date": f.get("revision_date", str(date.today())),
+                    "pdf_path": g,
+                    "pdf_url": None,
+                    "description": f.get("description", ""),
+                    "keywords": json.dumps(f.get("keywords", [])),
+                    "content_html": ch,
+                    "ai_analyzed": ai,
+                })
+            new_id = await _db(_do_insert)
+            await _db(conn.commit)
 
             uploaded.append({
                 "id": new_id,
@@ -546,14 +585,23 @@ async def import_gcs_folder(
 
     prefix = gcs_prefix.rstrip("/") + "/"
 
-    cur = conn.cursor()
-    cur.execute("SELECT pdf_path FROM msds WHERE pdf_path IS NOT NULL")
-    existing_paths = set(r["pdf_path"] for r in cur.fetchall())
+    def _fetch_existing_paths():
+        cur = conn.cursor()
+        cur.execute("SELECT pdf_path FROM msds WHERE pdf_path IS NOT NULL")
+        return set(r["pdf_path"] for r in cur.fetchall())
+    existing_paths = await _db(_fetch_existing_paths)
 
     # 메타데이터만 먼저 수집 (바이트 미로드)
     all_meta = await asyncio.to_thread(
         lambda: list(gcs_list_prefix_pdfs(prefix))
     )
+
+    MAX_IMPORT = 500
+    if len(all_meta) > MAX_IMPORT:
+        raise HTTPException(
+            status_code=400,
+            detail=f"폴더 내 PDF가 {len(all_meta)}개로 최대 {MAX_IMPORT}개를 초과합니다. prefix를 좁혀주세요."
+        )
 
     pending = [(b, f) for b, f in all_meta if b not in existing_paths]
     skipped = [{"filename": f} for b, f in all_meta if b in existing_paths]
@@ -588,20 +636,24 @@ async def import_gcs_folder(
             continue
         fields = r["fields"]
         try:
-            new_id = _insert_msds(cur, {
-                "product_name": fields.get("product_name") or r["filename"].replace(".pdf", ""),
-                "manufacturer": fields.get("manufacturer", "-"),
-                "category": fields.get("category", "기타"),
-                "hazard_level": fields.get("hazard_level", "경고"),
-                "revision_date": fields.get("revision_date", str(date.today())),
-                "pdf_path": r["blob_name"],
-                "pdf_url": None,
-                "description": fields.get("description", ""),
-                "keywords": json.dumps(fields.get("keywords", [])),
-                "content_html": r["content_html"],
-                "ai_analyzed": r["ai_analyzed"],
-            })
-            conn.commit()
+            def _do_insert(cur_r=r, cur_fields=fields):
+                cur = conn.cursor()
+                new_id = _insert_msds(cur, {
+                    "product_name": cur_fields.get("product_name") or cur_r["filename"].replace(".pdf", ""),
+                    "manufacturer": cur_fields.get("manufacturer", "-"),
+                    "category": cur_fields.get("category", "기타"),
+                    "hazard_level": cur_fields.get("hazard_level", "경고"),
+                    "revision_date": cur_fields.get("revision_date", str(date.today())),
+                    "pdf_path": cur_r["blob_name"],
+                    "pdf_url": None,
+                    "description": cur_fields.get("description", ""),
+                    "keywords": json.dumps(cur_fields.get("keywords", [])),
+                    "content_html": cur_r["content_html"],
+                    "ai_analyzed": cur_r["ai_analyzed"],
+                })
+                conn.commit()
+                return new_id
+            new_id = await _db(_do_insert)
             uploaded.append({
                 "id": new_id,
                 "filename": r["filename"],
@@ -639,7 +691,6 @@ async def import_gdrive_folder(
 
     uploaded = []
     errors = []
-    cur = conn.cursor()
 
     for filename, pdf_bytes in blobs:
         try:
@@ -649,20 +700,24 @@ async def import_gdrive_folder(
             content_html = result.get("content_html", "")
             ai_analyzed = 1 if result.get("mode") == "ai" else 0
 
-            new_id = _insert_msds(cur, {
-                "product_name": fields.get("product_name") or filename.replace(".pdf", ""),
-                "manufacturer": fields.get("manufacturer", "-"),
-                "category": fields.get("category", "기타"),
-                "hazard_level": fields.get("hazard_level", "경고"),
-                "revision_date": fields.get("revision_date", str(date.today())),
-                "pdf_path": gcs_path,
-                "pdf_url": None,
-                "description": fields.get("description", ""),
-                "keywords": json.dumps(fields.get("keywords", [])),
-                "content_html": content_html,
-                "ai_analyzed": ai_analyzed,
-            })
-            conn.commit()
+            def _do_insert(f=fields, g=gcs_path, fn=filename, ch=content_html, ai=ai_analyzed):
+                cur = conn.cursor()
+                new_id = _insert_msds(cur, {
+                    "product_name": f.get("product_name") or fn.replace(".pdf", ""),
+                    "manufacturer": f.get("manufacturer", "-"),
+                    "category": f.get("category", "기타"),
+                    "hazard_level": f.get("hazard_level", "경고"),
+                    "revision_date": f.get("revision_date", str(date.today())),
+                    "pdf_path": g,
+                    "pdf_url": None,
+                    "description": f.get("description", ""),
+                    "keywords": json.dumps(f.get("keywords", [])),
+                    "content_html": ch,
+                    "ai_analyzed": ai,
+                })
+                conn.commit()
+                return new_id
+            new_id = await _db(_do_insert)
 
             uploaded.append({
                 "id": new_id,
@@ -688,14 +743,17 @@ async def import_gdrive_folder(
 async def reanalyze_pending(conn=Depends(get_connection)):
     CONCURRENCY = 8
 
-    cur = conn.cursor()
-    cur.execute(
-        """SELECT id, product_name, pdf_path, pdf_url
-           FROM msds
-           WHERE ai_analyzed = 0
-             AND (pdf_path IS NOT NULL OR pdf_url IS NOT NULL)"""
-    )
-    rows = cur.fetchall()
+    def _fetch_pending():
+        cur = conn.cursor()
+        cur.execute(
+            """SELECT id, product_name, pdf_path, pdf_url
+               FROM msds
+               WHERE ai_analyzed = 0
+                 AND (pdf_path IS NOT NULL OR pdf_url IS NOT NULL)
+               LIMIT 100"""
+        )
+        return cur.fetchall()
+    rows = await _db(_fetch_pending)
 
     if not rows:
         return {"message": "재분석할 항목이 없습니다.", "updated": [], "errors": []}
@@ -745,39 +803,41 @@ async def reanalyze_pending(conn=Depends(get_connection)):
         fields = r["fields"]
         kw = json.dumps(fields.get("keywords", []))
 
-        if r["ai_analyzed"]:
-            cur.execute(
-                """UPDATE msds SET
-                    product_name  = %s,
-                    manufacturer  = %s,
-                    category      = %s,
-                    hazard_level  = %s,
-                    revision_date = %s,
-                    description   = %s,
-                    keywords      = %s,
-                    content_html  = %s,
-                    ai_analyzed   = 1,
-                    updated_at    = CURRENT_TIMESTAMP
-                   WHERE id = %s""",
-                (
-                    fields.get("product_name") or r["name"],
-                    fields.get("manufacturer", "-"),
-                    fields.get("category", "기타"),
-                    fields.get("hazard_level", "경고"),
-                    fields.get("revision_date", str(date.today())),
-                    fields.get("description", ""),
-                    kw,
-                    r["content_html"],
-                    r["id"],
-                ),
-            )
-        else:
-            cur.execute(
-                "UPDATE msds SET content_html = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
-                (r["content_html"], r["id"]),
-            )
-
-        conn.commit()
+        def _do_update(cur_r=r, cur_fields=fields, cur_kw=kw):
+            cur = conn.cursor()
+            if cur_r["ai_analyzed"]:
+                cur.execute(
+                    """UPDATE msds SET
+                        product_name  = %s,
+                        manufacturer  = %s,
+                        category      = %s,
+                        hazard_level  = %s,
+                        revision_date = %s,
+                        description   = %s,
+                        keywords      = %s,
+                        content_html  = %s,
+                        ai_analyzed   = 1,
+                        updated_at    = CURRENT_TIMESTAMP
+                       WHERE id = %s""",
+                    (
+                        cur_fields.get("product_name") or cur_r["name"],
+                        cur_fields.get("manufacturer", "-"),
+                        cur_fields.get("category", "기타"),
+                        cur_fields.get("hazard_level", "경고"),
+                        cur_fields.get("revision_date", str(date.today())),
+                        cur_fields.get("description", ""),
+                        cur_kw,
+                        cur_r["content_html"],
+                        cur_r["id"],
+                    ),
+                )
+            else:
+                cur.execute(
+                    "UPDATE msds SET content_html = %s, updated_at = CURRENT_TIMESTAMP WHERE id = %s",
+                    (cur_r["content_html"], cur_r["id"]),
+                )
+            conn.commit()
+        await _db(_do_update)
         updated.append({
             "id": r["id"],
             "product_name": fields.get("product_name") or r["name"],

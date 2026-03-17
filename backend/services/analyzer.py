@@ -19,6 +19,8 @@ from utils import configure_encoding
 
 configure_encoding()
 
+_CLAUDE_MODEL = os.getenv("CLAUDE_MODEL", "claude-sonnet-4-6")
+
 
 # ---------- PDF 텍스트 추출 ----------
 
@@ -190,7 +192,7 @@ def _call_claude(text: str) -> dict:
     )
 
     msg = client.messages.create(
-        model="claude-sonnet-4-6",
+        model=_CLAUDE_MODEL,
         max_tokens=1024,
         system=system_prompt,
         messages=[{"role": "user", "content": user_content}],

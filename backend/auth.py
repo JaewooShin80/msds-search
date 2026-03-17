@@ -1,4 +1,5 @@
 """관리자 인증 — PyJWT 기반 (8시간 만료)"""
+import hashlib
 import os
 import secrets
 from datetime import datetime, timezone, timedelta
@@ -6,12 +7,19 @@ from datetime import datetime, timezone, timedelta
 import jwt
 from fastapi import Header, HTTPException
 
+_JWT_SALT = "msds-jwt-signing-key-v1"
+
 
 def _secret_key() -> str:
-    key = os.getenv("ADMIN_PW", "")
-    if not key:
+    # 1) 전용 JWT 서명 키 우선
+    jwt_secret = os.getenv("JWT_SECRET", "")
+    if jwt_secret:
+        return jwt_secret
+    # 2) 미설정 시 ADMIN_PW에서 파생 (하위 호환)
+    admin_pw = os.getenv("ADMIN_PW", "")
+    if not admin_pw:
         raise HTTPException(status_code=500, detail="서버에 관리자 계정이 설정되지 않았습니다.")
-    return key
+    return hashlib.sha256(f"{admin_pw}{_JWT_SALT}".encode()).hexdigest()
 
 
 def create_token() -> str:

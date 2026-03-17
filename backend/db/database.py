@@ -41,8 +41,9 @@ def get_connection():
         yield conn
     except Exception:
         conn.rollback()
+        pool.putconn(conn, close=True)
         raise
-    finally:
+    else:
         pool.putconn(conn)
 
 
