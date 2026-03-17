@@ -86,8 +86,8 @@ body {
 }
 
 .sk-logo {
-    /* logo-title 폰트 크기와 동일 — 320px → 15px, 768px → 18px, 1400px+ → 20px */
-    height: clamp(15px, 0.7vw + 12.5px, 20px);
+    /* 이미지 내부 여백 보정(×1.4) — 실제 CI 글자가 logo-title 폰트와 같은 시각 크기로 보이도록 */
+    height: clamp(21px, 0.98vw + 17.5px, 28px);
     width: auto;
     object-fit: contain;
     filter: brightness(0) invert(1);
@@ -977,6 +977,18 @@ body {
     to {
         opacity: 1;
     }
+}
+
+.sr-only {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    padding: 0;
+    margin: -1px;
+    overflow: hidden;
+    clip: rect(0, 0, 0, 0);
+    white-space: nowrap;
+    border: 0;
 }
 
 /* ===================================================
