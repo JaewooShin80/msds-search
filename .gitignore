@@ -28,3 +28,4 @@ analysis_results/
 # IDE
 .vscode/
 .idea/
+.vercel

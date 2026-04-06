@@ -73,10 +73,10 @@ def migrate():
                 """
                 INSERT INTO msds
                     (product_name, manufacturer, category, hazard_level,
-                     cas_number, revision_date, pdf_path, pdf_url,
+                     revision_date, pdf_path, pdf_url,
                      description, keywords, content_html, ai_analyzed,
                      created_at, updated_at)
-                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
+                VALUES (%s, %s, %s, %s, %s, %s, %s, %s, %s, %s, %s,
                         COALESCE(%s::timestamptz, CURRENT_TIMESTAMP),
                         COALESCE(%s::timestamptz, CURRENT_TIMESTAMP))
                 ON CONFLICT DO NOTHING
@@ -86,7 +86,6 @@ def migrate():
                     r.get("manufacturer"),
                     r.get("category"),
                     r.get("hazard_level"),
-                    r.get("cas_number", "-"),
                     r.get("revision_date"),
                     r.get("pdf_path"),
                     r.get("pdf_url"),
