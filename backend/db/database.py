@@ -24,13 +24,20 @@ def _get_pool() -> psycopg2.pool.ThreadedConnectionPool:
             2, 10,
             DATABASE_URL,
             cursor_factory=psycopg2.extras.RealDictCursor,
+            options="-c statement_cache_size=0",  # Supabase pooler 호환
         )
     return _pool
 
 
 def get_db_connection() -> psycopg2.extensions.connection:
-    """직접 연결 생성 (init_db 전용)"""
-    return psycopg2.connect(DATABASE_URL, cursor_factory=psycopg2.extras.RealDictCursor)
+    """직접 연결 생성 (init_db 전용)
+    Supabase Transaction Pooler 사용 시 prepared statement 비활성화 필요.
+    """
+    return psycopg2.connect(
+        DATABASE_URL,
+        cursor_factory=psycopg2.extras.RealDictCursor,
+        options="-c statement_cache_size=0",  # Supabase pooler 호환
+    )
 
 
 def get_connection():
@@ -48,8 +55,8 @@ def get_connection():
 
 
 def _migrate(cur):
-    """idempotent 마이그레이션"""
-    # 1) 구 CHECK constraint 제거
+    """idempotent 마이그레이션: 주의→해당없음, cas_number 컬럼 드롭 (이미 적용된 경우 스킵)"""
+    # 1) 구 CHECK constraint 제거 — UPDATE 전에 먼저 제거해야 '해당없음' 값 허용됨
     cur.execute("""
         SELECT 1 FROM information_schema.table_constraints
         WHERE table_name='msds' AND constraint_type='CHECK'

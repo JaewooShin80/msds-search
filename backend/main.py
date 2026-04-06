@@ -1,13 +1,11 @@
 import logging
 import os
 from contextlib import asynccontextmanager
-from pathlib import Path
 
 from dotenv import load_dotenv
 from fastapi import FastAPI, Depends, Request
 from fastapi.middleware.cors import CORSMiddleware
 from fastapi.responses import JSONResponse
-from fastapi.staticfiles import StaticFiles
 from pythonjsonlogger import jsonlogger
 from pydantic import BaseModel
 from slowapi import Limiter, _rate_limit_exceeded_handler
@@ -126,17 +124,8 @@ def admin_verify():
 app.include_router(msds.router, prefix="/api/msds", tags=["MSDS"])
 app.include_router(meta.router, prefix="/api",      tags=["Meta"])
 
-# ========== 정적 파일 서빙 ==========
-UPLOAD_DIR   = Path(__file__).parent / os.getenv("UPLOAD_DIR", "./uploads/pdfs")
-FRONTEND_DIR = Path(__file__).parent / os.getenv("FRONTEND_DIR", "../frontend")
 
-UPLOAD_DIR.mkdir(parents=True, exist_ok=True)
-
-app.mount("/uploads", StaticFiles(directory=str(UPLOAD_DIR.parent)), name="uploads")
-app.mount("/",        StaticFiles(directory=str(FRONTEND_DIR), html=True), name="frontend")
-
-
-# ========== 서버 직접 실행 ==========
+# ========== 로컬 직접 실행 ==========
 if __name__ == "__main__":
     import uvicorn
     uvicorn.run(
