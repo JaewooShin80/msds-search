@@ -71,16 +71,18 @@ app.add_middleware(
 @app.middleware("http")
 async def add_security_headers(request: Request, call_next):
     response = await call_next(request)
+    vercel_origin = os.getenv("ALLOWED_ORIGINS", "").split(",")[0].strip().rstrip("/")
     response.headers["X-Content-Type-Options"] = "nosniff"
-    response.headers["X-Frame-Options"] = "SAMEORIGIN"
+    # PDF iframe을 Vercel에서 로드할 수 있도록 X-Frame-Options 제거 (CSP frame-ancestors로 대체)
     response.headers["Content-Security-Policy"] = (
         "default-src 'self'; "
         "script-src 'self' 'unsafe-inline' cdn.jsdelivr.net; "
         "style-src 'self' 'unsafe-inline' cdn.jsdelivr.net fonts.googleapis.com; "
         "font-src cdn.jsdelivr.net fonts.gstatic.com; "
         "img-src 'self' data: blob:; "
-        "connect-src 'self'; "
-        "frame-src 'self' blob:;"
+        f"connect-src 'self' {vercel_origin}; "
+        f"frame-src 'self' blob: {vercel_origin}; "
+        f"frame-ancestors 'self' {vercel_origin};"
     )
     return response
 
