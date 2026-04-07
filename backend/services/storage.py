@@ -47,7 +47,11 @@ def get_public_url(path: str) -> str:
 def create_signed_url(path: str, expires_in: int = 3600) -> str:
     """Supabase Storage 서명된 임시 URL 반환 (기본 1시간)"""
     res = _get_client().storage.from_(STORAGE_BUCKET).create_signed_url(path, expires_in)
-    return res.get("signedURL") or res.get("signed_url") or ""
+    url = res.get("signedURL") or res.get("signed_url") or ""
+    # 상대경로인 경우 Supabase 도메인 앞에 붙임
+    if url and url.startswith("/"):
+        url = SUPABASE_URL.rstrip("/") + "/storage/v1" + url
+    return url
 
 
 def exists(path: str) -> bool:
