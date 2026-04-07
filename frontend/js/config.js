@@ -10,5 +10,5 @@
 
     window.__API_BASE__ = isLocal
         ? '/api'
-        : 'https://msds-backend.onrender.com/api';  // ← Render 배포 후 수정
+        : 'https://msds-search.onrender.com/api';
 })();
