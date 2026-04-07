@@ -65,8 +65,9 @@ const api = {
         const qs = params.toString();
         return request(`${BASE}/msds${qs ? '?' + qs : ''}`);
     },
-    getMSDSById: (id) => request(`${BASE}/msds/${id}`),
-    downloadUrl: (id) => `${BASE}/msds/${id}/download`,
+    getMSDSById:   (id) => request(`${BASE}/msds/${id}`),
+    getPdfViewUrl: (id) => request(`${BASE}/msds/${id}/view-url`),
+    downloadUrl:   (id) => `${BASE}/msds/${id}/download`,
 
     // ===== 관리자 전용 (쓰기) =====
     analyzePDF(file) {

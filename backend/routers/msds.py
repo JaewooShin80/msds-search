@@ -22,6 +22,7 @@ from services.analyzer import analyze
 from services.storage import (
     upload_pdf,
     download_bytes,
+    create_signed_url,
     exists,
     list_prefix_pdfs,
 )
@@ -202,6 +203,33 @@ def get_one(msds_id: int, conn=Depends(get_connection)):
     if not row:
         raise HTTPException(status_code=404, detail="MSDS를 찾을 수 없습니다.")
     return row_to_dict(row)
+
+
+# ---------- PDF 뷰어 URL (Signed URL) ----------
+
+@router.get("/{msds_id}/view-url")
+async def view_url(msds_id: int, conn=Depends(get_connection)):
+    """iframe 뷰어용 — Supabase Signed URL(1시간) 또는 외부 URL 반환"""
+    def _query():
+        cur = conn.cursor()
+        cur.execute("SELECT pdf_path, pdf_url, product_name FROM msds WHERE id = %s", (msds_id,))
+        return cur.fetchone()
+    row = await _db(_query)
+    if not row:
+        raise HTTPException(status_code=404, detail="MSDS를 찾을 수 없습니다.")
+
+    if row["pdf_path"]:
+        try:
+            url = await asyncio.to_thread(create_signed_url, row["pdf_path"], 3600)
+            if url:
+                return {"url": url}
+        except Exception:
+            pass
+
+    if row["pdf_url"]:
+        return {"url": row["pdf_url"]}
+
+    raise HTTPException(status_code=404, detail="PDF 파일이 없습니다.")
 
 
 # ---------- 다운로드 ----------

@@ -359,14 +359,20 @@ async function openPDFModal(id) {
             ? DOMPurify.sanitize(m.content_html)
             : '<p class="no-content">추출된 내용이 없습니다. 원본 PDF 탭을 확인하세요.</p>';
 
-        const pdfUrl = (m.pdf_path || m.pdf_url) ? api.downloadUrl(m.id) : '';
+        document.getElementById('downloadBtn').href = api.downloadUrl(m.id);
+
+        // PDF iframe — Supabase Signed URL로 직접 로드 (크로스오리진 차단 우회)
         const pdfViewer = document.getElementById('pdfViewer');
-        if (pdfUrl && window.innerWidth > 767) {
-            pdfViewer.src = pdfUrl;
+        if (m.pdf_path || m.pdf_url) {
+            try {
+                const { url } = await api.getPdfViewUrl(m.id);
+                pdfViewer.src = url;
+            } catch {
+                pdfViewer.src = api.downloadUrl(m.id);
+            }
         } else {
             pdfViewer.removeAttribute('src');
         }
-        document.getElementById('downloadBtn').href = api.downloadUrl(m.id);
     } catch (err) {
         document.getElementById('modalTitle').textContent = '오류';
         document.getElementById('msdsInfo').innerHTML = `<p style="color:#dc2626;">상세 정보를 불러오지 못했습니다: ${escapeHtml(err.message)}</p>`;

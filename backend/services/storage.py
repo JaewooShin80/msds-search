@@ -44,6 +44,12 @@ def get_public_url(path: str) -> str:
     return _get_client().storage.from_(STORAGE_BUCKET).get_public_url(path)
 
 
+def create_signed_url(path: str, expires_in: int = 3600) -> str:
+    """Supabase Storage 서명된 임시 URL 반환 (기본 1시간)"""
+    res = _get_client().storage.from_(STORAGE_BUCKET).create_signed_url(path, expires_in)
+    return res.get("signedURL") or res.get("signed_url") or ""
+
+
 def exists(path: str) -> bool:
     """Supabase Storage에 파일이 존재하는지 확인"""
     try:
