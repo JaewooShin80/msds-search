@@ -21,5 +21,3 @@ services:
         value: "1"
       - key: PYTHONIOENCODING
         value: utf-8
-      - key: PORT
-        value: "8000"
