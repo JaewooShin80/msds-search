@@ -359,20 +359,38 @@ async function openPDFModal(id) {
             ? DOMPurify.sanitize(m.content_html)
             : '<p class="no-content">추출된 내용이 없습니다. 원본 PDF 탭을 확인하세요.</p>';
 
-        document.getElementById('downloadBtn').href = api.downloadUrl(m.id);
-
-        // PDF iframe — Supabase Signed URL로 직접 로드 (크로스오리진 차단 우회)
+        // PDF Signed URL 취득 (iframe + 다운로드 공용)
         const pdfViewer = document.getElementById('pdfViewer');
+        const downloadBtn = document.getElementById('downloadBtn');
+        let pdfUrl = '';
+
         if (m.pdf_path || m.pdf_url) {
             try {
                 const { url } = await api.getPdfViewUrl(m.id);
-                pdfViewer.src = url;
+                pdfUrl = url;
             } catch {
-                pdfViewer.src = api.downloadUrl(m.id);
+                pdfUrl = api.downloadUrl(m.id);
             }
+            pdfViewer.src = pdfUrl;
         } else {
             pdfViewer.removeAttribute('src');
         }
+
+        // 다운로드 버튼 — fetch로 blob 받아서 강제 다운로드 (크로스오리진 download 속성 우회)
+        downloadBtn.onclick = async () => {
+            const src = pdfUrl || api.downloadUrl(m.id);
+            try {
+                const res = await fetch(src);
+                const blob = await res.blob();
+                const a = document.createElement('a');
+                a.href = URL.createObjectURL(blob);
+                a.download = `${m.product_name}.pdf`;
+                a.click();
+                URL.revokeObjectURL(a.href);
+            } catch {
+                window.open(src, '_blank');
+            }
+        };
     } catch (err) {
         document.getElementById('modalTitle').textContent = '오류';
         document.getElementById('msdsInfo').innerHTML = `<p style="color:#dc2626;">상세 정보를 불러오지 못했습니다: ${escapeHtml(err.message)}</p>`;
@@ -382,6 +400,7 @@ async function openPDFModal(id) {
 function closeModal() {
     document.getElementById('pdfModal').classList.remove('active');
     document.getElementById('pdfViewer').src = '';
+    document.getElementById('downloadBtn').onclick = null;
     document.body.style.overflow = '';
 }
 

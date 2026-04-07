@@ -223,8 +223,10 @@ async def view_url(msds_id: int, conn=Depends(get_connection)):
             url = await asyncio.to_thread(create_signed_url, row["pdf_path"], 3600)
             if url:
                 return {"url": url}
-        except Exception:
-            pass
+        except Exception as e:
+            logger.warning("Signed URL 생성 실패, 다운로드 URL로 폴백", extra={"error": str(e), "pdf_path": row["pdf_path"]})
+        # signed URL 실패 시 다운로드 스트리밍 URL로 폴백
+        return {"url": f"/api/msds/{msds_id}/download"}
 
     if row["pdf_url"]:
         return {"url": row["pdf_url"]}
