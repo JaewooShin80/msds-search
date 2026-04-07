@@ -13,7 +13,7 @@ from urllib.parse import quote, urlparse
 import httpx
 from fastapi import APIRouter, Depends, File, Form, HTTPException, UploadFile
 from typing import List
-from fastapi.responses import FileResponse, StreamingResponse
+from fastapi.responses import FileResponse, JSONResponse, StreamingResponse
 
 from auth import require_admin
 from constants import HAZARD_LEVELS
@@ -218,18 +218,20 @@ async def view_url(msds_id: int, conn=Depends(get_connection)):
     if not row:
         raise HTTPException(status_code=404, detail="MSDS를 찾을 수 없습니다.")
 
+    _no_cache = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
+
     if row["pdf_path"]:
         try:
             url = await asyncio.to_thread(create_signed_url, row["pdf_path"], 3600)
             if url:
-                return {"url": url}
+                return JSONResponse({"url": url}, headers=_no_cache)
         except Exception as e:
             logger.warning("Signed URL 생성 실패, 다운로드 URL로 폴백", extra={"error": str(e), "pdf_path": row["pdf_path"]})
         # signed URL 실패 시 다운로드 스트리밍 URL로 폴백
-        return {"url": f"/api/msds/{msds_id}/download"}
+        return JSONResponse({"url": f"/api/msds/{msds_id}/download"}, headers=_no_cache)
 
     if row["pdf_url"]:
-        return {"url": row["pdf_url"]}
+        return JSONResponse({"url": row["pdf_url"]}, headers=_no_cache)
 
     raise HTTPException(status_code=404, detail="PDF 파일이 없습니다.")
 
@@ -247,12 +249,13 @@ async def download(msds_id: int, conn=Depends(get_connection)):
     if not row:
         raise HTTPException(status_code=404, detail="MSDS를 찾을 수 없습니다.")
 
-    filename_header = f"inline; filename*=UTF-8''{quote(row['product_name'])}.pdf"
+    _no_cache = {"Cache-Control": "no-store, no-cache, must-revalidate", "Pragma": "no-cache"}
+    filename_header = f"attachment; filename*=UTF-8''{quote(row['product_name'])}.pdf"
 
     if row["pdf_path"]:
         try:
             data = await asyncio.to_thread(download_bytes, row["pdf_path"])
-            return StreamingResponse(iter([data]), media_type="application/pdf", headers={"Content-Disposition": filename_header})
+            return StreamingResponse(iter([data]), media_type="application/pdf", headers={"Content-Disposition": filename_header, **_no_cache})
         except Exception:
             pass
 
@@ -263,7 +266,7 @@ async def download(msds_id: int, conn=Depends(get_connection)):
         except ValueError:
             raise HTTPException(status_code=400, detail="유효하지 않은 파일 경로입니다.")
         if path.exists():
-            return FileResponse(path=str(path), media_type="application/pdf", headers={"Content-Disposition": filename_header})
+            return FileResponse(path=str(path), media_type="application/pdf", headers={"Content-Disposition": filename_header, **_no_cache})
 
     if row["pdf_url"]:
         _validate_url(row["pdf_url"])
@@ -271,7 +274,7 @@ async def download(msds_id: int, conn=Depends(get_connection)):
             r = await client.get(row["pdf_url"])
         if r.status_code != 200:
             raise HTTPException(status_code=502, detail="원본 PDF를 가져올 수 없습니다.")
-        return StreamingResponse(iter([r.content]), media_type="application/pdf", headers={"Content-Disposition": filename_header})
+        return StreamingResponse(iter([r.content]), media_type="application/pdf", headers={"Content-Disposition": filename_header, **_no_cache})
 
     raise HTTPException(status_code=404, detail="다운로드 가능한 파일이 없습니다.")
 
