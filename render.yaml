@@ -1,0 +1,25 @@
+services:
+  - type: web
+    name: msds-backend
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: python main.py
+    healthCheckPath: /api/health
+    envVars:
+      - key: DATABASE_URL
+        sync: false           # Render 대시보드에서 직접 입력
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: ADMIN_ID
+        sync: false
+      - key: ADMIN_PW
+        sync: false
+      - key: ALLOWED_ORIGINS
+        sync: false           # Vercel 배포 URL 입력 (예: https://msds.vercel.app)
+      - key: PYTHONUTF8
+        value: "1"
+      - key: PYTHONIOENCODING
+        value: utf-8
+      - key: PORT
+        value: "8000"

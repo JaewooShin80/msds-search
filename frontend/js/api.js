@@ -2,7 +2,7 @@
  * API 호출 모듈
  */
 
-const BASE = '/api';
+const BASE = (window.__API_BASE__ || '/api');
 
 /** XSS 방지용 HTML 이스케이프 */
 function escapeHtml(str) {

@@ -1,27 +1,16 @@
 {
-  "version": 2,
-  "builds": [
-    {
-      "src": "api/index.py",
-      "use": "@vercel/python",
-      "config": { "maxLambdaSize": "250mb" }
-    },
-    {
-      "src": "frontend/**",
-      "use": "@vercel/static"
-    }
+  "rootDirectory": "frontend",
+  "rewrites": [
+    { "source": "/dashboard", "destination": "/dashboard.html" },
+    { "source": "/admin",     "destination": "/admin.html"     }
   ],
-  "functions": {
-    "api/index.py": {
-      "maxDuration": 60
+  "headers": [
+    {
+      "source": "/(.*)",
+      "headers": [
+        { "key": "X-Content-Type-Options", "value": "nosniff" },
+        { "key": "X-Frame-Options",        "value": "SAMEORIGIN" }
+      ]
     }
-  },
-  "routes": [
-    { "src": "/api/(.*)",       "dest": "/api/index.py" },
-    { "src": "/js/(.*)",        "dest": "/frontend/js/$1" },
-    { "src": "/css/(.*)",       "dest": "/frontend/css/$1" },
-    { "src": "/admin.html",     "dest": "/frontend/admin.html" },
-    { "src": "/dashboard.html", "dest": "/frontend/dashboard.html" },
-    { "src": "/",               "dest": "/frontend/index.html" }
   ]
 }
